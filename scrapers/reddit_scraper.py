@@ -62,6 +62,7 @@ def fetch_subreddit(subreddit: str, ticker: str, limit: int, days: int) -> List[
             "created_utc": post.get("created_utc", 0),
             "subreddit": post.get("subreddit", subreddit),
             "num_comments": post.get("num_comments", 0),
+            "permalink": post.get("permalink", ""),
         })
 
     logger.info("Fetched %d posts from r/%s", len(posts), subreddit)

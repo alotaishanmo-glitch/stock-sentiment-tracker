@@ -1,0 +1,1239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SentimentIQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0A0A0F;
+    --bg-2: #07070B;
+    --card: #111118;
+    --card-2: #14141C;
+    --line: rgba(255,255,255,0.06);
+    --line-strong: rgba(255,255,255,0.1);
+    --text: #ECEDF2;
+    --text-2: #9A9CA8;
+    --text-3: #5C5E6B;
+    --blue: #3B82F6;
+    --indigo: #6366F1;
+    --green: #34D399;
+    --green-2: #10B981;
+    --red: #F87171;
+    --red-2: #EF4444;
+    --orange: #FB923C;
+    --yellow: #FACC15;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body {
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(99,102,241,0.10), transparent 60%),
+      radial-gradient(700px 400px at 0% 30%, rgba(59,130,246,0.06), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: "tnum" 1, "ss01" 1; }
+  #root { min-height: 100vh; }
+
+  .grid-bg::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1c1c26; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #25252f; }
+  ::selection { background: rgba(59,130,246,0.35); color: white; }
+
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1);} 50% { opacity: 0.55; transform: scale(0.85);} }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fade-up { animation: fadeUp 0.6s cubic-bezier(.2,.7,.2,1) both; }
+</style>
+<!-- API port injected by app.py -->
+<script>window.__sentiqPort = SENTIQ_PORT_VALUE;</script>
+</head>
+<body class="grid-bg">
+<div id="root"></div>
+
+<!-- Visible error/status overlay for debugging -->
+<div id="__status" style="position:fixed;top:10px;left:10px;z-index:99999;background:rgba(0,0,0,0.85);color:#fff;padding:12px 16px;border-radius:8px;font:13px monospace;max-width:600px;word-break:break-all;border:1px solid #444;">
+  Waiting for scripts…
+</div>
+<script>
+  function __setStatus(msg, color) {
+    var el = document.getElementById('__status');
+    el.textContent = msg;
+    if (color) el.style.borderColor = color;
+  }
+  window.onerror = function(msg, src, line, col, err) {
+    __setStatus('JS ERROR: ' + msg + '\n' + (src||'') + ':' + line, '#f87171');
+    return false;
+  };
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script>__setStatus('React loaded: ' + !!(window.React) + ', ReactDOM: ' + !!(window.ReactDOM));</script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script>__setStatus('Babel loaded: ' + !!(window.Babel));</script>
+
+<!-- ── tweaks-panel ─────────────────────────────────────────────────── -->
+<script type="text/babel">
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2}
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;font:inherit;
+    font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;outline:none;color:inherit}
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+`;
+
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+  }, []);
+  return [values, setTweak];
+}
+
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+  const clamp = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const maxR = Math.max(PAD, window.innerWidth - panel.offsetWidth - PAD);
+    const maxB = Math.max(PAD, window.innerHeight - panel.offsetHeight - PAD);
+    offsetRef.current = {
+      x: Math.min(maxR, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxB, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    clamp();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(clamp) : null;
+    if (ro) { ro.observe(document.documentElement); return () => ro.disconnect(); }
+    window.addEventListener('resize', clamp);
+    return () => window.removeEventListener('resize', clamp);
+  }, [open, clamp]);
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (e?.data?.type === '__activate_edit_mode') setOpen(true);
+      else if (e?.data?.type === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+  const dismiss = () => { setOpen(false); window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*'); };
+  const onDragStart = (e) => {
+    const panel = dragRef.current; if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startR = window.innerWidth - r.right, startB = window.innerHeight - r.bottom;
+    const move = (ev) => { offsetRef.current = { x: startR - (ev.clientX - sx), y: startB - (ev.clientY - sy) }; clamp(); };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" onMouseDown={(e) => e.stopPropagation()} onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">{children}</div>
+      </div>
+    </>
+  );
+}
+
+function TweakSection({ label, children }) {
+  return <><div className="twk-sect">{label}</div>{children}</>;
+}
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl"><span>{label}</span>{value != null && <span className="twk-val">{value}</span>}</div>
+      {children}
+    </div>
+  );
+}
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  const opts = options.map((o) => typeof o === 'object' ? o : { value: o, label: o });
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+  const valueRef = React.useRef(value); valueRef.current = value;
+  const segAt = (cx) => {
+    const r = trackRef.current.getBoundingClientRect();
+    return opts[Math.max(0, Math.min(n - 1, Math.floor(((cx - r.left - 2) / (r.width - 4)) * n)))].value;
+  };
+  const onPointerDown = (e) => {
+    setDragging(true); const v0 = segAt(e.clientX); if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => { if (!trackRef.current) return; const v = segAt(ev.clientX); if (v !== valueRef.current) onChange(v); };
+    const up = () => { setDragging(false); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown} className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb" style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`, width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>{o.label}</button>)}
+      </div>
+    </TweakRow>
+  );
+}
+function TweakText({ label, value, placeholder, onChange }) {
+  return <TweakRow label={label}><input className="twk-field" type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></TweakRow>;
+}
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => { if (min != null && n < min) return min; if (max != null && n > max) return max; return n; };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault(); startRef.current = { x: e.clientX, val: value };
+    const dec = (String(step).split('.')[1] || '').length;
+    const move = (ev) => { const raw = startRef.current.val + (ev.clientX - startRef.current.x) * step; onChange(clamp(Number((Math.round(raw / step) * step).toFixed(dec)))); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step} onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span style={{ paddingRight: 8, color: 'rgba(41,38,27,.45)' }}>{unit}</span>}
+    </div>
+  );
+}
+Object.assign(window, { useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider, TweakRadio, TweakText, TweakNumber });
+</script>
+
+<!-- ── icons ────────────────────────────────────────────────────────── -->
+<script type="text/babel">
+const Icon = ({ children, size = 16, className = "", style = {}, strokeWidth = 1.6 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
+    {children}
+  </svg>
+);
+const IconBolt       = (p) => <Icon {...p}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" /></Icon>;
+const IconSearch     = (p) => <Icon {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></Icon>;
+const IconChat       = (p) => <Icon {...p}><path d="M21 12a8 8 0 0 1-11.6 7.16L3 21l1.84-6.4A8 8 0 1 1 21 12z" /></Icon>;
+const IconArrows     = (p) => <Icon {...p}><path d="M7 17V5M7 5l-3 3M7 5l3 3"/><path d="M17 7v12M17 19l-3-3M17 19l3-3"/></Icon>;
+const IconTrend      = (p) => <Icon {...p}><polyline points="3 17 9 11 13 15 21 7" /><polyline points="14 7 21 7 21 14" /></Icon>;
+const IconDatabase   = (p) => <Icon {...p}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" /><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" /></Icon>;
+const IconGithub     = (p) => <Icon {...p} strokeWidth={1.5}><path d="M9 19c-4 1.5-4-2-6-2.5"/><path d="M15 22v-3.5a3.4 3.4 0 0 0-.9-2.6c3-.3 6-1.5 6-6.5a5 5 0 0 0-1.4-3.5 4.6 4.6 0 0 0-.1-3.5s-1.1-.3-3.6 1.4a12.4 12.4 0 0 0-6.5 0C5.9 1.6 4.8 1.9 4.8 1.9a4.6 4.6 0 0 0-.1 3.5A5 5 0 0 0 3.3 8.9c0 4.9 3 6.1 6 6.5a3.4 3.4 0 0 0-.9 2.6V22"/></Icon>;
+const IconArrowUp    = (p) => <Icon {...p}><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></Icon>;
+const IconArrowDown  = (p) => <Icon {...p}><path d="M12 5v14"/><path d="M5 12l7 7 7-7"/></Icon>;
+const IconArrowRight = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></Icon>;
+const IconRefresh    = (p) => <Icon {...p}><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></Icon>;
+const IconClock      = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></Icon>;
+const IconWarn       = (p) => <Icon {...p}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></Icon>;
+const IconReddit     = (p) => <Icon {...p} strokeWidth={1.5}><circle cx="12" cy="13" r="8"/><circle cx="9" cy="13" r="1.2" fill="currentColor"/><circle cx="15" cy="13" r="1.2" fill="currentColor"/><path d="M9 16c1 1 2 1.4 3 1.4S13.5 17 14.5 16"/><circle cx="20" cy="9" r="1.5"/><path d="M19 9.5l-3-2"/><circle cx="12" cy="5" r="1"/></Icon>;
+const IconStockTwits = (p) => <Icon {...p} strokeWidth={1.5}><path d="M4 6h12a4 4 0 0 1 0 8h-3l-3 4v-4H4z"/><path d="M8 10h6"/></Icon>;
+const IconNews       = (p) => <Icon {...p}><path d="M4 5h13v14H6a2 2 0 0 1-2-2V5z"/><path d="M17 8h3v9a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 17h4"/></Icon>;
+const IconBull       = (p) => <Icon {...p}><path d="M5 8L3 5h4l2 3"/><path d="M19 8l2-3h-4l-2 3"/><path d="M7 8h10v6a5 5 0 0 1-10 0z"/><circle cx="10" cy="12" r=".7" fill="currentColor"/><circle cx="14" cy="12" r=".7" fill="currentColor"/></Icon>;
+const IconBear       = (p) => <Icon {...p}><circle cx="6" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 12c0-3 2.7-5 6-5s6 2 6 5v2a6 6 0 0 1-12 0z"/><circle cx="10" cy="12" r=".7" fill="currentColor"/><circle cx="14" cy="12" r=".7" fill="currentColor"/></Icon>;
+const IconSparkle    = (p) => <Icon {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></Icon>;
+const IconShield     = (p) => <Icon {...p}><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></Icon>;
+Object.assign(window, {
+  Icon, IconBolt, IconSearch, IconChat, IconArrows, IconTrend, IconDatabase,
+  IconGithub, IconArrowUp, IconArrowDown, IconArrowRight, IconRefresh, IconClock, IconWarn,
+  IconReddit, IconStockTwits, IconNews, IconBull, IconBear, IconSparkle, IconShield,
+});
+</script>
+
+<!-- ── gauge ────────────────────────────────────────────────────────── -->
+<script type="text/babel">
+const GAUGE_ZONES = [
+  { from: 0,  to: 35,  color: "#EF4444", label: "Bearish" },
+  { from: 35, to: 50,  color: "#FB923C", label: "Slightly Bearish" },
+  { from: 50, to: 65,  color: "#FACC15", label: "Slightly Bullish" },
+  { from: 65, to: 100, color: "#10B981", label: "Bullish" },
+];
+function zoneFor(score) {
+  return GAUGE_ZONES.find(z => score >= z.from && score <= z.to) || GAUGE_ZONES[3];
+}
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function arcPath(cx, cy, r, startDeg, endDeg) {
+  const s = polar(cx, cy, r, startDeg), e = polar(cx, cy, r, endDeg);
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${endDeg - startDeg <= 180 ? 0 : 1} 1 ${e.x} ${e.y}`;
+}
+function scoreToTopDeg(score) { return -90 + (score / 100) * 180; }
+
+function Gauge({ score = 72.4, size = 360 }) {
+  const z = zoneFor(score);
+  const cx = size / 2, cy = size * 0.62, r = size * 0.38, stroke = size * 0.055;
+  const trackD = arcPath(cx, cy, r, -90, 90);
+  const zoneArcs = GAUGE_ZONES.map(zone => ({
+    d: arcPath(cx, cy, r, scoreToTopDeg(zone.from), scoreToTopDeg(zone.to)),
+    color: zone.color,
+  }));
+  const ticks = [];
+  for (let i = 0; i <= 100; i += 10) {
+    const ang = scoreToTopDeg(i);
+    ticks.push({
+      ...polar(cx, cy, r - stroke / 2 - 8, ang),
+      x2: polar(cx, cy, r - stroke / 2 - 2, ang).x,
+      y2: polar(cx, cy, r - stroke / 2 - 2, ang).y,
+      major: i % 50 === 0,
+    });
+  }
+  const labels = [{ v: 0, ang: -90 }, { v: 50, ang: 0 }, { v: 100, ang: 90 }]
+    .map(l => ({ ...l, ...polar(cx, cy, r + stroke / 2 + 16, l.ang) }));
+
+  const [animatedScore, setAnimatedScore] = React.useState(0);
+  React.useEffect(() => {
+    let raf, start;
+    const dur = 1400;
+    const step = (t) => {
+      if (!start) start = t;
+      const k = Math.min(1, (t - start) / dur);
+      setAnimatedScore(score * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [score]);
+
+  const animAngle = -90 + (animatedScore / 100) * 180;
+  const animZone = zoneFor(animatedScore);
+
+  return (
+    <div style={{ position: "relative", width: size, height: size * 0.95, margin: "0 auto" }}>
+      <svg width={size} height={size * 0.78} viewBox={`0 0 ${size} ${size * 0.78}`} style={{ overflow: "visible" }}>
+        <defs>
+          <filter id="gaugeGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={animZone.color} stopOpacity="0.35" />
+            <stop offset="60%" stopColor={animZone.color} stopOpacity="0.05" />
+            <stop offset="100%" stopColor={animZone.color} stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="needleGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor={animZone.color} />
+          </linearGradient>
+        </defs>
+        <circle cx={cx} cy={cy} r={r * 0.9} fill="url(#centerGlow)" />
+        <path d={trackD} stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} fill="none" strokeLinecap="round" />
+        {zoneArcs.map((za, i) => (
+          <path key={i} d={za.d} stroke={za.color} strokeWidth={stroke} fill="none" strokeLinecap="butt" opacity="0.85" />
+        ))}
+        <path d={zoneArcs.find(za => za.color === animZone.color).d}
+              stroke={animZone.color} strokeWidth={stroke} fill="none" strokeLinecap="butt"
+              filter="url(#gaugeGlow)" opacity="0.5" />
+        {ticks.map((t, i) => (
+          <line key={i} x1={t.x} y1={t.y} x2={t.x2} y2={t.y2}
+                stroke={t.major ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.18)"}
+                strokeWidth={t.major ? 1.5 : 1} strokeLinecap="round" />
+        ))}
+        {labels.map((l, i) => (
+          <text key={i} x={l.x} y={l.y} fill="rgba(255,255,255,0.4)"
+                fontSize="11" fontFamily="JetBrains Mono, monospace" textAnchor="middle" dominantBaseline="middle">
+            {l.v}
+          </text>
+        ))}
+        <g style={{ transform: `rotate(${animAngle}deg)`, transformOrigin: `${cx}px ${cy}px` }}>
+          <line x1={cx} y1={cy} x2={cx} y2={cy - r + stroke + 6}
+                stroke="url(#needleGrad)" strokeWidth="3" strokeLinecap="round" filter="url(#gaugeGlow)" />
+          <line x1={cx} y1={cy} x2={cx} y2={cy - r + stroke + 6}
+                stroke="white" strokeWidth="1.4" strokeLinecap="round" />
+        </g>
+        <circle cx={cx} cy={cy} r="9" fill="#0A0A0F" stroke={animZone.color} strokeWidth="2" />
+        <circle cx={cx} cy={cy} r="3" fill={animZone.color} />
+      </svg>
+      <div style={{ position: "absolute", left: 0, right: 0, top: cy + 24, textAlign: "center", pointerEvents: "none" }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
+          Sentiment Score
+        </div>
+        <div className="mono" style={{ fontSize: size * 0.18, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1, color: "white", textShadow: `0 0 28px ${animZone.color}66` }}>
+          {animatedScore.toFixed(1)}
+          <span style={{ fontSize: size * 0.06, color: "var(--text-3)", fontWeight: 500, marginLeft: 4 }}>/100</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+window.Gauge = Gauge;
+window.GAUGE_ZONES = GAUGE_ZONES;
+window.zoneFor = zoneFor;
+</script>
+
+<!-- ── trendchart ────────────────────────────────────────────────────── -->
+<script type="text/babel">
+function smoothPath(points) {
+  if (points.length < 2) return "";
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i], p1 = points[i], p2 = points[i + 1], p3 = points[i + 2] || p2;
+    d += ` C ${p1.x + (p2.x - p0.x) / 6} ${p1.y + (p2.y - p0.y) / 6}, ${p2.x - (p3.x - p1.x) / 6} ${p2.y - (p3.y - p1.y) / 6}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+function TrendChart({ data }) {
+  const W = 880, H = 260, padL = 44, padR = 28, padT = 24, padB = 32;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const xFor = (i) => padL + (i / (data.length - 1)) * innerW;
+  const yFor = (v) => padT + (1 - v / 100) * innerH;
+  const points = data.map((d, i) => ({ x: xFor(i), y: yFor(d.score), ...d }));
+  const pathD = smoothPath(points);
+  const areaD = pathD + ` L ${points[points.length - 1].x} ${padT + innerH} L ${points[0].x} ${padT + innerH} Z`;
+  const [hover, setHover] = React.useState(null);
+  const svgRef = React.useRef(null);
+  const handleMove = (e) => {
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    let best = 0, bestDist = Infinity;
+    points.forEach((p, i) => { const d = Math.abs(p.x - x); if (d < bestDist) { bestDist = d; best = i; } });
+    setHover(best);
+  };
+  return (
+    <div style={{ position: "relative", width: "100%" }}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}
+           onMouseMove={handleMove} onMouseLeave={() => setHover(null)}>
+        <defs>
+          <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#3B82F6" />
+            <stop offset="100%" stopColor="#6366F1" />
+          </linearGradient>
+          <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" />
+          </filter>
+        </defs>
+        {[0, 25, 50, 75, 100].map(t => (
+          <g key={t}>
+            <line x1={padL} y1={yFor(t)} x2={W - padR} y2={yFor(t)} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+            <text x={padL - 10} y={yFor(t)} fill="rgba(255,255,255,0.35)" fontSize="10" fontFamily="JetBrains Mono, monospace" textAnchor="end" dominantBaseline="middle">{t}</text>
+          </g>
+        ))}
+        <line x1={padL} y1={yFor(50)} x2={W - padR} y2={yFor(50)} stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="4 5" />
+        <text x={W - padR - 6} y={yFor(50) - 6} fill="rgba(255,255,255,0.32)" fontSize="10" fontFamily="JetBrains Mono, monospace" textAnchor="end">NEUTRAL</text>
+        <path d={areaD} fill="url(#areaFill)" />
+        <path d={pathD} stroke="url(#lineGrad)" strokeWidth="6" fill="none" filter="url(#lineGlow)" opacity="0.6" />
+        <path d={pathD} stroke="url(#lineGrad)" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+        {points.map((p, i) => (
+          <text key={i} x={p.x} y={H - 10} fill="rgba(255,255,255,0.45)" fontSize="11" fontFamily="JetBrains Mono, monospace" textAnchor="middle">{p.day}</text>
+        ))}
+        {points.map((p, i) => (
+          <g key={i}>
+            {hover === i && <circle cx={p.x} cy={p.y} r="10" fill="#3B82F6" opacity="0.18" />}
+            <circle cx={p.x} cy={p.y} r={hover === i ? 5 : 3.5} fill="#0A0A0F" stroke="#3B82F6" strokeWidth="2" />
+          </g>
+        ))}
+        {hover !== null && (
+          <line x1={points[hover].x} y1={padT} x2={points[hover].x} y2={padT + innerH}
+                stroke="rgba(59,130,246,0.4)" strokeWidth="1" strokeDasharray="3 3" />
+        )}
+      </svg>
+      {hover !== null && (() => {
+        const p = points[hover];
+        const tipW = 140;
+        return (
+          <div style={{
+            position: "absolute",
+            left: `calc(${(p.x / W) * 100}% - ${tipW / 2}px)`,
+            top: `calc(${(p.y / H) * 100}% - 74px)`,
+            width: tipW,
+            background: "rgba(20,20,28,0.96)",
+            border: "1px solid rgba(59,130,246,0.4)",
+            borderRadius: 8, padding: "8px 10px", pointerEvents: "none",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)", backdropFilter: "blur(8px)",
+          }}>
+            <div style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>{p.date}</div>
+            <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: "white", marginTop: 2 }}>{p.score.toFixed(1)}</div>
+            <div style={{ fontSize: 11, color: zoneFor(p.score).color, marginTop: 1 }}>{zoneFor(p.score).label}</div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+window.TrendChart = TrendChart;
+</script>
+
+<!-- ── app ──────────────────────────────────────────────────────────── -->
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const API_PORT = window.__sentiqPort;
+
+// Fallback mock data shown before first analysis
+const MOCK_DEFAULTS = {
+  ticker: "TSLA", company: "Tesla, Inc.",
+  price: 248.42, changePct: 3.16,
+  score: 72.4, confidence: "High",
+  mentions: 193, bullPct: 71, trendDelta: 8.2,
+};
+const MOCK_TREND = [
+  { day: "MON", date: "Apr 28", score: 64.2 },
+  { day: "TUE", date: "Apr 29", score: 61.8 },
+  { day: "WED", date: "Apr 30", score: 67.5 },
+  { day: "THU", date: "May 01", score: 65.1 },
+  { day: "FRI", date: "May 02", score: 70.3 },
+  { day: "SAT", date: "May 03", score: 73.6 },
+  { day: "SUN", date: "May 04", score: 72.4 },
+];
+const MOCK_TOPICS = [
+  { kw: "earnings", weight: 1.0 }, { kw: "deliveries", weight: 0.85 },
+  { kw: "guidance", weight: 0.7 }, { kw: "musk", weight: 0.95 },
+  { kw: "autopilot", weight: 0.6 }, { kw: "china", weight: 0.55 },
+  { kw: "shorts", weight: 0.4 }, { kw: "calls", weight: 0.45 },
+];
+
+// ── Utilities ──────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return String(n);
+}
+function timeAgo(dateStr) {
+  if (!dateStr) return "recently";
+  const d = new Date(dateStr);
+  const h = Math.round((Date.now() - d) / 3600000);
+  if (h < 1) return "just now";
+  if (h < 24) return h + "h ago";
+  return Math.round(h / 24) + "d ago";
+}
+
+// ── Primitives ─────────────────────────────────────────────────────────
+const cardStyle = {
+  background: "linear-gradient(180deg, rgba(20,20,28,0.7), rgba(17,17,24,0.7))",
+  border: "1px solid var(--line)", borderRadius: 14, padding: 20,
+  position: "relative",
+  transition: "transform 0.25s cubic-bezier(.2,.7,.2,1), border-color 0.25s, box-shadow 0.25s",
+};
+function Card({ children, style, className = "", interactive = true, ...rest }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div className={className} style={{
+      ...cardStyle,
+      ...(interactive && hover ? {
+        transform: "translateY(-2px)",
+        borderColor: "rgba(255,255,255,0.12)",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.35), 0 0 0 1px rgba(59,130,246,0.06)",
+      } : {}),
+      ...style,
+    }}
+    onMouseEnter={() => interactive && setHover(true)}
+    onMouseLeave={() => interactive && setHover(false)} {...rest}>
+      {children}
+    </div>
+  );
+}
+function CardHeader({ icon, title }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-2)" }}>
+      <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)", color: "#7AA9F7" }}>{icon}</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 500 }}>{title}</div>
+    </div>
+  );
+}
+function PulseDot({ color = "#10B981" }) {
+  return (
+    <span style={{ position: "relative", display: "inline-block", width: 8, height: 8 }}>
+      <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: color, boxShadow: `0 0 12px ${color}, 0 0 4px ${color}` }} />
+      <span style={{ position: "absolute", inset: -4, borderRadius: 999, background: color, opacity: 0.4, animation: "pulse-dot 2s ease-in-out infinite" }} />
+    </span>
+  );
+}
+
+// ── Loading overlay ────────────────────────────────────────────────────
+function LoadingOverlay() {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "rgba(10,10,15,0.82)", backdropFilter: "blur(6px)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20,
+    }}>
+      <div style={{
+        width: 44, height: 44,
+        border: "3px solid rgba(59,130,246,0.18)",
+        borderTopColor: "#3B82F6",
+        borderRadius: "50%",
+        animation: "spin 0.85s linear infinite",
+      }} />
+      <div style={{ color: "var(--text-2)", fontSize: 14, letterSpacing: "0.08em" }}>
+        Analysing sentiment…
+      </div>
+      <div style={{ color: "var(--text-3)", fontSize: 11, maxWidth: 260, textAlign: "center", lineHeight: 1.5 }}>
+        Fetching Reddit, StockTwits &amp; News, then scoring with FinBERT
+      </div>
+    </div>
+  );
+}
+
+// ── Source warning card ────────────────────────────────────────────────
+function SourceWarningCard({ name, message }) {
+  return (
+    <Card style={{ borderColor: "rgba(251,146,60,0.35)", background: "rgba(251,146,60,0.04)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ color: "#FB923C", flexShrink: 0 }}><IconWarn size={22} /></div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: "#FB923C" }}>{name} unavailable</div>
+          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 3 }}>
+            {message || "Could not fetch data from this source"}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ── Top Nav ────────────────────────────────────────────────────────────
+function TopNav({ ticker, onTickerSubmit, loading, lastUpdated }) {
+  const [input, setInput] = useState(`$${ticker}`);
+  const [focused, setFocused] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => { setInput(`$${ticker}`); }, [ticker]);
+  useEffect(() => {
+    if (!lastUpdated) return;
+    setElapsed(0);
+    const iv = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, [lastUpdated]);
+  const submit = (e) => {
+    e?.preventDefault?.();
+    const cleaned = input.replace(/[^a-zA-Z]/g, "").toUpperCase();
+    if (cleaned) onTickerSubmit(cleaned);
+  };
+  return (
+    <nav style={{ position: "sticky", top: 0, zIndex: 20, backdropFilter: "blur(14px)", background: "rgba(10,10,15,0.72)", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "14px 28px", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, display: "grid", placeItems: "center", background: "linear-gradient(135deg, #3B82F6, #6366F1)", boxShadow: "0 6px 18px rgba(59,130,246,0.35), inset 0 0 0 1px rgba(255,255,255,0.18)" }}>
+            <IconBolt size={16} style={{ color: "white" }} strokeWidth={2.4} />
+          </div>
+          <div style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em" }}>
+            Sentiment<span style={{ color: "var(--text-2)" }}>IQ</span>
+          </div>
+          <div style={{ marginLeft: 8, padding: "3px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#A5B4FC", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", border: "1px solid rgba(99,102,241,0.2)" }}>BETA</div>
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", gap: 8, minWidth: 460 }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: focused ? "rgba(59,130,246,0.06)" : "rgba(255,255,255,0.025)", border: `1px solid ${focused ? "rgba(59,130,246,0.55)" : "var(--line-strong)"}`, borderRadius: 10, transition: "all 0.2s", boxShadow: focused ? "0 0 0 4px rgba(59,130,246,0.12)" : "none" }}>
+            <IconSearch size={15} style={{ color: focused ? "#7AA9F7" : "var(--text-3)" }} />
+            <input value={input} onChange={e => setInput(e.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+              placeholder="Enter ticker… $AAPL" className="mono"
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 13, letterSpacing: "0.02em" }} />
+            <kbd style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "var(--text-3)", border: "1px solid var(--line)", fontFamily: "JetBrains Mono, monospace" }}>⌘K</kbd>
+          </div>
+          <button type="submit" disabled={loading} style={{ padding: "0 18px", background: loading ? "rgba(59,130,246,0.4)" : "linear-gradient(180deg, #4f8ef7, #3B82F6)", border: "1px solid rgba(59,130,246,0.6)", color: "white", fontWeight: 600, fontSize: 13, borderRadius: 10, cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 6px 20px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.25)", display: "flex", alignItems: "center", gap: 7, transition: "transform 0.15s, box-shadow 0.2s" }}
+          onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 10px 28px rgba(59,130,246,0.55), inset 0 1px 0 rgba(255,255,255,0.3)"; } }}
+          onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 6px 20px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.25)"; }}>
+            {loading
+              ? <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.85s linear infinite" }} />
+              : <IconSparkle size={13} />}
+            {loading ? "Analysing…" : "Analyse"}
+          </button>
+        </form>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, color: "var(--text-3)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <PulseDot color="#10B981" />
+            <span style={{ color: "var(--text-2)" }}>Live</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <IconClock size={13} />
+            <span className="mono">{lastUpdated ? `Updated ${elapsed}s ago` : "Not yet fetched"}</span>
+          </div>
+          <button onClick={() => onTickerSubmit(ticker)} style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", color: "var(--text-2)", cursor: "pointer", display: "grid", placeItems: "center" }}>
+            <IconRefresh size={14} />
+          </button>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// ── Hero ───────────────────────────────────────────────────────────────
+function Hero({ ticker, company, price, changePct }) {
+  const up = changePct >= 0;
+  return (
+    <div className="fade-up" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+          <h1 className="mono" style={{ fontSize: 60, fontWeight: 700, margin: 0, letterSpacing: "-0.04em", color: "white", textShadow: "0 0 60px rgba(99,102,241,0.25)" }}>${ticker}</h1>
+          <div style={{ padding: "5px 9px", borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line)", color: "var(--text-2)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 500 }}>NASDAQ</div>
+        </div>
+        <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 16 }}>{company || ticker}</div>
+      </div>
+      {price > 0 && (
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14 }}>
+          <div className="mono" style={{ fontSize: 36, fontWeight: 600, letterSpacing: "-0.03em" }}>${price.toFixed(2)}</div>
+          <div className="mono" style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, background: up ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${up ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, color: up ? "#34D399" : "#F87171", fontSize: 14, fontWeight: 600, marginBottom: 5 }}>
+            {up ? <IconArrowUp size={13} strokeWidth={2.4}/> : <IconArrowDown size={13} strokeWidth={2.4}/>}
+            {up ? "+" : ""}{changePct.toFixed(2)}%
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Score card ─────────────────────────────────────────────────────────
+function ScoreCard({ score, confidence }) {
+  const z = zoneFor(score);
+  return (
+    <Card interactive={false} style={{ padding: "32px 28px 28px", background: "linear-gradient(180deg, rgba(20,20,28,0.85), rgba(14,14,20,0.85))", overflow: "hidden" }}>
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(500px 200px at 50% 100%, ${z.color}18, transparent 60%)` }} />
+      <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <CardHeader icon={<IconShield size={14} />} title="Sentiment Score" />
+        <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>7-day weighted · FinBERT</div>
+      </div>
+      <div style={{ marginTop: 14 }}><Gauge score={score} size={420} /></div>
+      <div style={{ marginTop: -8, display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", borderRadius: 999, background: `${z.color}15`, border: `1px solid ${z.color}40`, color: z.color, fontSize: 14, fontWeight: 600 }}>
+          <PulseDot color={z.color} />{z.label}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 999, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-strong)", color: "var(--text-2)", fontSize: 13 }}>
+          <IconShield size={13} style={{ color: "var(--text-3)" }}/><span>{confidence} Confidence</span>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ── Stats row ──────────────────────────────────────────────────────────
+function StatCard({ icon, title, children }) {
+  return (
+    <Card><CardHeader icon={icon} title={title} /><div style={{ marginTop: 14 }}>{children}</div></Card>
+  );
+}
+function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving" }) {
+  const isImproving = trendDirection === "Improving";
+  const isDeclining = trendDirection === "Declining";
+  const trendColor = isImproving ? "#34D399" : isDeclining ? "#F87171" : "var(--text-2)";
+  const TrendIcon = isImproving ? IconArrowUp : isDeclining ? IconArrowDown : IconArrowRight;
+  const trendLabel = trendDirection;
+  const deltaSign = trendDelta >= 0 ? "+" : "";
+  const absDelta = Math.abs(trendDelta);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <StatCard icon={<IconChat size={14}/>} title="Mention Volume">
+        <div className="mono" style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1 }}>{mentions}</div>
+        <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Total mentions this week</div>
+        <svg viewBox="0 0 120 24" width="100%" height="24" style={{ marginTop: 10 }}>
+          <polyline points="0,18 15,15 30,16 45,10 60,12 75,7 90,9 105,4 120,5"
+                    fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </StatCard>
+
+      <StatCard icon={<IconArrows size={14}/>} title="Bull / Bear Ratio">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <div className="mono" style={{ color: "#34D399", fontSize: 22, fontWeight: 600 }}>{bullPct}<span style={{ fontSize: 14, opacity: 0.7 }}>% Bull</span></div>
+          <div className="mono" style={{ color: "#F87171", fontSize: 22, fontWeight: 600 }}>{100 - bullPct}<span style={{ fontSize: 14, opacity: 0.7 }}>% Bear</span></div>
+        </div>
+        <div style={{ marginTop: 14, height: 6, borderRadius: 999, background: "rgba(248,113,113,0.18)", overflow: "hidden", position: "relative" }}>
+          <div style={{ position: "absolute", inset: 0, width: `${bullPct}%`, background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 999, boxShadow: "0 0 12px rgba(16,185,129,0.4)" }}/>
+        </div>
+        <div style={{ marginTop: 10, color: "var(--text-3)", fontSize: 12 }}>Based on {mentions} classified posts</div>
+      </StatCard>
+
+      <StatCard icon={<IconTrend size={14}/>} title="Trend (7d)">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ color: trendColor, fontSize: 22, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ display: "inline-grid", placeItems: "center", width: 28, height: 28, borderRadius: 7, background: `${trendColor}1a`, border: `1px solid ${trendColor}30` }}>
+              <TrendIcon size={14} strokeWidth={2.6}/>
+            </span>
+            {trendLabel}
+          </div>
+        </div>
+        <div className="mono" style={{ marginTop: 8, color: "var(--text-2)", fontSize: 13 }}>
+          <span style={{ color: trendColor }}>{isImproving ? "+" : isDeclining ? "-" : ""}{absDelta.toFixed(1)} pts</span> over 7 days
+        </div>
+        <div style={{ marginTop: 12, display: "flex", gap: 3, alignItems: "flex-end", height: 22 }}>
+          {[8,10,7,12,9,15,17].map((h, i) => (
+            <div key={i} style={{ flex: 1, height: `${h * 1.3}px`, borderRadius: 2, background: i === 6 ? `linear-gradient(180deg, ${trendColor}, ${trendColor}cc)` : "rgba(255,255,255,0.1)", boxShadow: i === 6 ? `0 0 8px ${trendColor}80` : "none" }}/>
+          ))}
+        </div>
+      </StatCard>
+
+      <StatCard icon={<IconDatabase size={14}/>} title="Sources Active">
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div className="mono" style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1 }}>3</div>
+          <div style={{ color: "var(--text-2)", fontSize: 13 }}>Sources</div>
+        </div>
+        <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {["Reddit", "StockTwits", "News"].map(s => (
+            <div key={s} style={{ padding: "4px 10px", fontSize: 11, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line-strong)", color: "var(--text-2)", display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#34D399", boxShadow: "0 0 6px #34D399" }}/>{s}
+            </div>
+          ))}
+        </div>
+      </StatCard>
+    </div>
+  );
+}
+
+// ── Trend card ─────────────────────────────────────────────────────────
+function TrendCard({ trendData }) {
+  return (
+    <Card interactive={false} style={{ padding: "22px 24px 14px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <CardHeader icon={<IconTrend size={14}/>} title="7-Day Sentiment Trend" />
+          <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Hover to inspect daily score</div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {["7D", "30D", "90D", "1Y"].map((r, i) => (
+            <button key={r} style={{ padding: "6px 12px", fontSize: 11, borderRadius: 7, cursor: "pointer", background: i === 0 ? "rgba(59,130,246,0.12)" : "transparent", border: `1px solid ${i === 0 ? "rgba(59,130,246,0.4)" : "var(--line)"}`, color: i === 0 ? "#7AA9F7" : "var(--text-2)", fontFamily: "JetBrains Mono, monospace", fontWeight: 500, letterSpacing: "0.04em" }}>{r}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 14 }}><TrendChart data={trendData} /></div>
+    </Card>
+  );
+}
+
+// ── Source breakdown ───────────────────────────────────────────────────
+function SourceCard({ icon, name, score, count, countLabel, accent, body }) {
+  const z = zoneFor(score);
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}30`, color: accent }}>{icon}</div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{name}</div>
+            <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}><span className="mono">{count}</span> {countLabel}</div>
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 600, color: z.color, letterSpacing: "-0.02em" }}>{score.toFixed(1)}</div>
+          <div style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>/ 100</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 16, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+        <div style={{ width: `${score}%`, height: "100%", background: `linear-gradient(90deg, ${z.color}aa, ${z.color})`, boxShadow: `0 0 8px ${z.color}80` }}/>
+      </div>
+      <div style={{ marginTop: 16 }}>{body}</div>
+    </Card>
+  );
+}
+
+function SourceBreakdown({ sources, errors, ticker }) {
+  // Helper: does this source have real scored data?
+  const live = (key) => sources && sources[key] && sources[key].score !== null;
+
+  // ── Reddit ──────────────────────────────────────────────────
+  const redditScore = live("reddit") ? sources.reddit.score : 68.1;
+  const redditCount = live("reddit") ? sources.reddit.count : 143;
+  const redditPost = live("reddit") ? sources.reddit.topPost : null;
+  const redditError = errors && errors.reddit;
+
+  const redditBody = redditError ? (
+    <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : redditPost ? (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Post</div>
+      <a href={redditPost.url || "#"} target="_blank" rel="noopener noreferrer" style={{ fontStyle: "italic", color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(255,107,71,0.4)", paddingLeft: 12, display: "block", textDecoration: "none" }}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--text)"}
+        onMouseLeave={e => e.currentTarget.style.color = "var(--text-2)"}>
+        "{redditPost.text}"
+      </a>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11, alignItems: "center" }}>
+        <span className="mono">▲ {fmtNum(redditPost.upvotes)}</span>
+        <span className="mono">💬 {fmtNum(redditPost.num_comments)}</span>
+        <span>r/{redditPost.subreddit}</span>
+        {redditPost.url && <a href={redditPost.url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", color: "var(--blue)", fontSize: 11, textDecoration: "none" }}>View post ↗</a>}
+      </div>
+    </div>
+  ) : (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Post</div>
+      <div style={{ fontStyle: "italic", color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(255,107,71,0.4)", paddingLeft: 12 }}>
+        "Q1 deliveries beat by 4% and they barely touched margins — this is the cleanest setup we've had into earnings in months."
+      </div>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11 }}>
+        <span className="mono">▲ 2.4k</span><span className="mono">💬 312</span><span>r/wallstreetbets</span>
+      </div>
+    </div>
+  );
+
+  // ── StockTwits ──────────────────────────────────────────────
+  const stScore = live("stocktwits") ? sources.stocktwits.score : 75.3;
+  const stCount = live("stocktwits") ? sources.stocktwits.count : 30;
+  const stBull = live("stocktwits") ? sources.stocktwits.bull : 18;
+  const stBear = live("stocktwits") ? sources.stocktwits.bear : 7;
+  const stError = errors && errors.stocktwits;
+
+  const stTicker = live("stocktwits") ? (sources.stocktwits.ticker || ticker) : ticker;
+  const stBody = stError ? (
+    <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : (
+    <div>
+    <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ flex: 1, padding: "10px 12px", borderRadius: 8, background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.2)", display: "flex", alignItems: "center", gap: 8 }}>
+        <IconBull size={20} style={{ color: "#34D399" }}/>
+        <div>
+          <div className="mono" style={{ color: "#34D399", fontSize: 18, fontWeight: 600, lineHeight: 1 }}>{stBull}</div>
+          <div style={{ color: "var(--text-3)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 4 }}>Bull</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: "10px 12px", borderRadius: 8, background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.18)", display: "flex", alignItems: "center", gap: 8 }}>
+        <IconBear size={20} style={{ color: "#F87171" }}/>
+        <div>
+          <div className="mono" style={{ color: "#F87171", fontSize: 18, fontWeight: 600, lineHeight: 1 }}>{stBear}</div>
+          <div style={{ color: "var(--text-3)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 4 }}>Bear</div>
+        </div>
+      </div>
+    </div>
+    <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+      <a href={`https://stocktwits.com/symbol/${stTicker}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", fontSize: 11, textDecoration: "none" }}>View stream ↗</a>
+    </div>
+    </div>
+  );
+
+  // ── News ────────────────────────────────────────────────────
+  const newsScore = live("news") ? sources.news.score : 74.0;
+  const newsCount = live("news") ? sources.news.count : 20;
+  const newsHeadline = live("news") ? sources.news.topHeadline : null;
+  const newsError = errors && errors.news;
+
+  const newsBody = newsError ? (
+    <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : newsHeadline ? (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Headline</div>
+      <a href={newsHeadline.url || "#"} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(167,139,250,0.4)", paddingLeft: 12, display: "block", textDecoration: "none" }}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--text)"}
+        onMouseLeave={e => e.currentTarget.style.color = "var(--text-2)"}>
+        "{newsHeadline.text}"
+      </a>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11, alignItems: "center" }}>
+        <span>Yahoo Finance</span>
+        <span style={{ color: "var(--line-strong)" }}>·</span>
+        <span className="mono">{timeAgo(newsHeadline.date_str)}</span>
+        {newsHeadline.url && <a href={newsHeadline.url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", color: "var(--blue)", fontSize: 11, textDecoration: "none" }}>Read article ↗</a>}
+      </div>
+    </div>
+  ) : (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Headline</div>
+      <div style={{ color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(167,139,250,0.4)", paddingLeft: 12 }}>
+        "Tesla expands Shanghai capacity ahead of Q3 ramp; analysts revise FY targets upward by 6%."
+      </div>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11 }}>
+        <span>Yahoo Finance</span><span style={{ color: "var(--line-strong)" }}>·</span><span className="mono">2h ago</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+      {redditError
+        ? <SourceWarningCard name="Reddit" message={redditError} />
+        : <SourceCard icon={<IconReddit size={18}/>} name="Reddit" score={redditScore} count={redditCount} countLabel="posts across subreddits" accent="#FF6B47" body={redditBody} />
+      }
+      {stError
+        ? <SourceWarningCard name="StockTwits" message={stError} />
+        : <SourceCard icon={<IconStockTwits size={18}/>} name="StockTwits" score={stScore} count={stCount} countLabel={`messages tagged ${"$"}{live("stocktwits") ? sources.stocktwits.ticker || "..." : "TSLA"}`} accent="#3B82F6" body={stBody} />
+      }
+      {newsError
+        ? <SourceWarningCard name="News" message={newsError} />
+        : <SourceCard icon={<IconNews size={18}/>} name="News" score={newsScore} count={newsCount} countLabel="headlines in last 7d" accent="#A78BFA" body={newsBody} />
+      }
+    </div>
+  );
+}
+
+// ── Hot topics ─────────────────────────────────────────────────────────
+function HotTopics({ topics }) {
+  return (
+    <Card interactive={false}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <CardHeader icon={<IconSparkle size={14}/>} title="Trending Topics" />
+        <div style={{ color: "var(--text-3)", fontSize: 11, letterSpacing: "0.06em" }}>Pill size = mention frequency</div>
+      </div>
+      <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {topics.map(t => {
+          const fontSize = 12 + t.weight * 6;
+          return (
+            <button key={t.kw} style={{ padding: `${6 + t.weight * 4}px ${12 + t.weight * 8}px`, borderRadius: 999, background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.25)", color: "white", fontSize, fontWeight: 500, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 7 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.6)"; e.currentTarget.style.boxShadow = "0 0 16px rgba(59,130,246,0.25)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(59,130,246,0.05)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.25)"; e.currentTarget.style.boxShadow = ""; e.currentTarget.style.transform = ""; }}>
+              <span style={{ color: "var(--text-3)", fontSize: fontSize * 0.8 }}>#</span>
+              {t.kw}
+              <span className="mono" style={{ color: "var(--text-3)", fontSize: fontSize * 0.7 }}>{Math.round(t.weight * 80)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────────────
+function App() {
+  const [tweaks, setTweak] = window.useTweaks
+    ? window.useTweaks(MOCK_DEFAULTS)
+    : [MOCK_DEFAULTS, () => {}];
+
+  const [apiData, setApiData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sourceErrors, setSourceErrors] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // Sync API result into tweaks so the Tweaks panel stays in sync
+  useEffect(() => {
+    if (!apiData) return;
+    setTweak({
+      ticker: apiData.ticker,
+      company: apiData.company,
+      price: apiData.price,
+      changePct: apiData.changePct,
+      score: apiData.score,
+      confidence: apiData.confidence,
+      mentions: apiData.mentions,
+      bullPct: apiData.bullPct,
+      trendDelta: Math.abs(apiData.trendDelta),
+    });
+  }, [apiData]);
+
+  const analyse = useCallback(async (t) => {
+    if (!API_PORT) return;
+    window.scrollTo(0, 0);
+    setLoading(true);
+    setSourceErrors({});
+    try {
+      const url = `http://127.0.0.1:${API_PORT}/api/analyse?ticker=${encodeURIComponent(t)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+      const data = await resp.json();
+      if (data.error && !data.ticker) throw new Error(data.error);
+      setApiData(data);
+      setSourceErrors(data.errors || {});
+      setLastUpdated(Date.now());
+    } catch (err) {
+      setSourceErrors({ _global: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Auto-fetch TSLA on first load
+  useEffect(() => { if (API_PORT) analyse(MOCK_DEFAULTS.ticker); }, []);
+
+  const onTickerSubmit = (t) => {
+    setTweak({ ticker: t });
+    analyse(t);
+  };
+
+  // Derived display values
+  const trendData = apiData ? apiData.trend : MOCK_TREND;
+  const hotTopicsData = apiData ? apiData.hotTopics : MOCK_TOPICS;
+  const trendDirection = apiData ? apiData.trendDirection : "Improving";
+
+  return (
+    <div style={{ position: "relative", zIndex: 1 }}>
+      {loading && <LoadingOverlay />}
+
+      <TopNav ticker={tweaks.ticker} onTickerSubmit={onTickerSubmit} loading={loading} lastUpdated={lastUpdated} />
+
+      <main style={{ maxWidth: 1240, margin: "0 auto", padding: "36px 28px 80px" }}>
+        {sourceErrors._global && (
+          <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171", fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+            <IconWarn size={16} /> Analysis failed: {sourceErrors._global}
+          </div>
+        )}
+
+        <Hero ticker={tweaks.ticker} company={tweaks.company} price={tweaks.price} changePct={tweaks.changePct} />
+        <div style={{ height: 28 }} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" }}>
+          <ScoreCard score={tweaks.score} confidence={tweaks.confidence} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Card>
+              <CardHeader icon={<IconSparkle size={14}/>} title="AI Summary" />
+              <div style={{ marginTop: 12, color: "var(--text)", fontSize: 13.5, lineHeight: 1.6 }}>
+                Sentiment around <span style={{ color: "white", fontWeight: 600 }}>${tweaks.ticker}</span> has shifted
+                <span style={{ color: zoneFor(tweaks.score).color, fontWeight: 600 }}> {zoneFor(tweaks.score).label.toLowerCase()} </span>
+                this week. Reddit is the most active source, while news sentiment provides directional confirmation. Monitor for shifts before earnings.
+              </div>
+              <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(hotTopicsData.slice(0, 3)).map(t => (
+                  <span key={t.kw} style={{ padding: "3px 8px", fontSize: 11, borderRadius: 999, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "#A5B4FC" }}>#{t.kw}</span>
+                ))}
+              </div>
+            </Card>
+            <Card>
+              <CardHeader icon={<IconShield size={14}/>} title="Signal Quality" />
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                {[
+                  { label: "Volume", v: Math.min(100, Math.round(tweaks.mentions / 3)), color: "#3B82F6" },
+                  { label: "Source diversity", v: apiData ? 72 : 72, color: "#6366F1" },
+                  { label: "Model certainty", v: tweaks.confidence === "High" ? 91 : tweaks.confidence === "Medium" ? 68 : 45, color: "#34D399" },
+                ].map(b => (
+                  <div key={b.label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-2)" }}>
+                      <span>{b.label}</span>
+                      <span className="mono" style={{ color: "white" }}>{b.v}</span>
+                    </div>
+                    <div style={{ marginTop: 5, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)" }}>
+                      <div style={{ width: `${b.v}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${b.color}aa, ${b.color})`, boxShadow: `0 0 8px ${b.color}66` }}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        <div style={{ height: 16 }} />
+        <StatsRow mentions={tweaks.mentions} bullPct={tweaks.bullPct} trendDelta={tweaks.trendDelta} trendDirection={trendDirection} />
+
+        <div style={{ height: 16 }} />
+        <TrendCard trendData={trendData} />
+
+        <div style={{ height: 28 }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 4px 16px" }}>
+          <h2 style={{ margin: 0, fontSize: 14, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", fontWeight: 500 }}>Source Breakdown</h2>
+          <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+            <span className="mono">{tweaks.mentions}</span> total mentions across <span className="mono">3</span> sources
+          </div>
+        </div>
+        <SourceBreakdown sources={apiData ? apiData.sources : null} errors={sourceErrors} ticker={tweaks.ticker} />
+
+        <div style={{ height: 16 }} />
+        <HotTopics topics={hotTopicsData} />
+
+        <footer style={{ marginTop: 56, paddingTop: 24, borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--text-3)", fontSize: 12, flexWrap: "wrap", gap: 14 }}>
+          <div>
+            Data sourced from <span style={{ color: "var(--text-2)" }}>Reddit</span>,
+            <span style={{ color: "var(--text-2)" }}> StockTwits</span> &amp;
+            <span style={{ color: "var(--text-2)" }}> Yahoo Finance</span>
+            &nbsp;·&nbsp; Powered by <span style={{ color: "var(--text-2)" }}>FinBERT</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <a href="#" style={{ color: "var(--text-3)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <IconGithub size={14}/> github.com/sentimentiq
+            </a>
+            <span className="mono" style={{ color: "var(--text-3)" }}>v0.4.2</span>
+          </div>
+        </footer>
+      </main>
+
+      {window.TweaksPanel && (
+        <window.TweaksPanel title="Tweaks">
+          <window.TweakSection title="Ticker">
+            <window.TweakText label="Symbol" value={tweaks.ticker} onChange={v => setTweak({ ticker: v.toUpperCase() })}/>
+            <window.TweakText label="Company" value={tweaks.company} onChange={v => setTweak({ company: v })}/>
+            <window.TweakNumber label="Price" value={tweaks.price} step={0.01} onChange={v => setTweak({ price: v })}/>
+            <window.TweakNumber label="Change %" value={tweaks.changePct} step={0.01} onChange={v => setTweak({ changePct: v })}/>
+          </window.TweakSection>
+          <window.TweakSection title="Sentiment">
+            <window.TweakSlider label="Score" value={tweaks.score} min={0} max={100} step={0.1} onChange={v => setTweak({ score: v })}/>
+            <window.TweakRadio label="Confidence" value={tweaks.confidence}
+              options={[{value: "Low", label: "Low"}, {value: "Medium", label: "Med"}, {value: "High", label: "High"}]}
+              onChange={v => setTweak({ confidence: v })}/>
+            <window.TweakSlider label="Mentions" value={tweaks.mentions} min={0} max={1000} step={1} onChange={v => setTweak({ mentions: v })}/>
+            <window.TweakSlider label="Bull %" value={tweaks.bullPct} min={0} max={100} step={1} onChange={v => setTweak({ bullPct: v })}/>
+          </window.TweakSection>
+        </window.TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+document.getElementById("__status").style.display = "none";
+</script>
+</body>
+</html>
