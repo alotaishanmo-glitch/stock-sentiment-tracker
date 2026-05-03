@@ -19,15 +19,8 @@ def create_app(port: int = 0) -> Flask:
     @app.route("/")
     def index():
         html_path = pathlib.Path(__file__).parent / "frontend" / "SentimentIQ.html"
-        html = html_path.read_text(encoding="utf-8").replace("__API_PORT__", str(port))
+        html = html_path.read_text(encoding="utf-8")
         return html, 200, {"Content-Type": "text/html; charset=utf-8"}
-
-    @app.after_request
-    def _cors(response):
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return response
 
     @app.route("/api/analyse")
     def analyse():

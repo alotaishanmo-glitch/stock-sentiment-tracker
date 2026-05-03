@@ -62,33 +62,17 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .fade-up { animation: fadeUp 0.6s cubic-bezier(.2,.7,.2,1) both; }
 </style>
-<!-- API port injected by app.py -->
-<script>window.__sentiqPort = SENTIQ_PORT_VALUE;</script>
+<!-- Result injected server-side by app.py; falls back to null in Flask/local mode -->
+<script>
+  try { window.__INITIAL_DATA__ = __INITIAL_DATA_JSON__; } catch(e) { window.__INITIAL_DATA__ = null; }
+</script>
 </head>
 <body class="grid-bg">
 <div id="root"></div>
 
-<!-- Visible error/status overlay for debugging -->
-<div id="__status" style="position:fixed;top:10px;left:10px;z-index:99999;background:rgba(0,0,0,0.85);color:#fff;padding:12px 16px;border-radius:8px;font:13px monospace;max-width:600px;word-break:break-all;border:1px solid #444;">
-  Waiting for scripts…
-</div>
-<script>
-  function __setStatus(msg, color) {
-    var el = document.getElementById('__status');
-    el.textContent = msg;
-    if (color) el.style.borderColor = color;
-  }
-  window.onerror = function(msg, src, line, col, err) {
-    __setStatus('JS ERROR: ' + msg + '\n' + (src||'') + ':' + line, '#f87171');
-    return false;
-  };
-</script>
-
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-<script>__setStatus('React loaded: ' + !!(window.React) + ', ReactDOM: ' + !!(window.ReactDOM));</script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
-<script>__setStatus('Babel loaded: ' + !!(window.Babel));</script>
 
 <!-- ── tweaks-panel ─────────────────────────────────────────────────── -->
 <script type="text/babel">
@@ -551,7 +535,7 @@ window.TrendChart = TrendChart;
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
-const API_PORT = window.__sentiqPort;
+const API_BASE = "";  // relative — works from any host
 
 // Fallback mock data shown before first analysis
 const MOCK_DEFAULTS = {
@@ -1066,10 +1050,16 @@ function App() {
     ? window.useTweaks(MOCK_DEFAULTS)
     : [MOCK_DEFAULTS, () => {}];
 
-  const [apiData, setApiData] = useState(null);
+  // Streamlit mode: data is injected server-side into window.__INITIAL_DATA__
+  // Flask/local mode: window.__INITIAL_DATA__ is null, fetch from /api/analyse
+  const IS_STREAMLIT = !!window.__INITIAL_DATA__;
+
+  const [apiData, setApiData] = useState(window.__INITIAL_DATA__ || null);
   const [loading, setLoading] = useState(false);
-  const [sourceErrors, setSourceErrors] = useState({});
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [sourceErrors, setSourceErrors] = useState(
+    (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.errors) ? window.__INITIAL_DATA__.errors : {}
+  );
+  const [lastUpdated, setLastUpdated] = useState(window.__INITIAL_DATA__ ? Date.now() : null);
 
   // Sync API result into tweaks so the Tweaks panel stays in sync
   useEffect(() => {
@@ -1083,17 +1073,16 @@ function App() {
       confidence: apiData.confidence,
       mentions: apiData.mentions,
       bullPct: apiData.bullPct,
-      trendDelta: Math.abs(apiData.trendDelta),
+      trendDelta: Math.abs(apiData.trendDelta || 0),
     });
   }, [apiData]);
 
   const analyse = useCallback(async (t) => {
-    if (!API_PORT) return;
     window.scrollTo(0, 0);
     setLoading(true);
     setSourceErrors({});
     try {
-      const url = `http://127.0.0.1:${API_PORT}/api/analyse?ticker=${encodeURIComponent(t)}`;
+      const url = `${API_BASE}/api/analyse?ticker=${encodeURIComponent(t)}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Server error ${resp.status}`);
       const data = await resp.json();
@@ -1108,12 +1097,29 @@ function App() {
     }
   }, []);
 
-  // Auto-fetch TSLA on first load
-  useEffect(() => { if (API_PORT) analyse(MOCK_DEFAULTS.ticker); }, []);
+  // Flask/local mode only: auto-fetch on first load
+  useEffect(() => { if (!IS_STREAMLIT) analyse(MOCK_DEFAULTS.ticker); }, []);
 
   const onTickerSubmit = (t) => {
-    setTweak({ ticker: t });
-    analyse(t);
+    if (IS_STREAMLIT) {
+      // Navigate the top Streamlit frame to ?ticker=X so Python reruns with new ticker.
+      // We use a programmatic anchor click (target="_top") rather than setting
+      // window.top.location directly, which can throw SecurityError inside iframes.
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.target = '_top';
+      try {
+        a.href = window.top.location.pathname + '?ticker=' + encodeURIComponent(t);
+      } catch (_) {
+        a.href = '/?ticker=' + encodeURIComponent(t);
+      }
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      setTweak({ ticker: t });
+      analyse(t);
+    }
   };
 
   // Derived display values
@@ -1121,13 +1127,21 @@ function App() {
   const hotTopicsData = apiData ? apiData.hotTopics : MOCK_TOPICS;
   const trendDirection = apiData ? apiData.trendDirection : "Improving";
 
-  return (
-    <div style={{ position: "relative", zIndex: 1 }}>
-      {loading && <LoadingOverlay />}
+      {/* Compact status strip (no search bar — Streamlit form handles that) */}
+      <div style={{ position: "sticky", top: 0, zIndex: 20, backdropFilter: "blur(14px)", background: "rgba(10,10,15,0.72)", borderBottom: "1px solid var(--line)" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "10px 28px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, color: "var(--text-3)", fontSize: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <PulseDot color="#10B981" />
+            <span style={{ color: "var(--text-2)" }}>Live</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <IconClock size={13} />
+            <span className="mono">{lastUpdated ? `Updated ${elapsed}s ago` : "—"}</span>
+          </div>
+        </div>
+      </div>
 
-      <TopNav ticker={tweaks.ticker} onTickerSubmit={onTickerSubmit} loading={loading} lastUpdated={lastUpdated} />
-
-      <main style={{ maxWidth: 1240, margin: "0 auto", padding: "36px 28px 80px" }}>
+      <main style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 28px 60px" }}>
         {sourceErrors._global && (
           <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171", fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
             <IconWarn size={16} /> Analysis failed: {sourceErrors._global}
