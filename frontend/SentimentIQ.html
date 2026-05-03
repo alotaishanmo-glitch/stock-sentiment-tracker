@@ -1127,6 +1127,19 @@ function App() {
   const hotTopicsData = apiData ? apiData.hotTopics : MOCK_TOPICS;
   const trendDirection = apiData ? apiData.trendDirection : "Improving";
 
+  // Live "updated Xs ago" counter (replaces the old TopNav timer)
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!lastUpdated) return;
+    setElapsed(0);
+    const iv = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, [lastUpdated]);
+
+  return (
+    <div style={{ position: "relative", zIndex: 1 }}>
+      {loading && <LoadingOverlay />}
+
       {/* Compact status strip (no search bar — Streamlit form handles that) */}
       <div style={{ position: "sticky", top: 0, zIndex: 20, backdropFilter: "blur(14px)", background: "rgba(10,10,15,0.72)", borderBottom: "1px solid var(--line)" }}>
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "10px 28px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, color: "var(--text-3)", fontSize: 12 }}>
