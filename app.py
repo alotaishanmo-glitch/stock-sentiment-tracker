@@ -12,6 +12,7 @@ Usage:
 
 import json
 import pathlib
+import traceback
 
 import streamlit as st
 
@@ -26,19 +27,13 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Hide chrome */
     #MainMenu, footer, .stDeployButton { visibility: hidden !important; }
     header[data-testid="stHeader"] { background: transparent !important; height: 0 !important; }
     [data-testid="stToolbar"] { display: none !important; }
-
-    /* Page background */
     .stApp { background: #0A0A0F !important; }
     body { background: #0A0A0F !important; color: #ECEDF2 !important; }
-
-    /* Tighten container */
     .block-container { padding: 16px 24px 0 !important; max-width: 100% !important; }
 
-    /* Search row styling */
     .stTextInput > div > div > input {
         background: rgba(20,20,28,0.85) !important;
         color: #ECEDF2 !important;
@@ -66,9 +61,22 @@ st.markdown(
         transform: translateY(-1px);
     }
 
-    /* iframe edges */
     iframe { border: none !important; }
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ── Logo + tagline (own row, above the search) ─────────────────────────
+st.markdown(
+    """
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+      <div style="font-size:26px;font-weight:700;color:#3B82F6;">⚡ SentimentIQ</div>
+      <div style="color:#9A9CA8;font-size:13px;margin-top:6px;">
+        Real-time stock sentiment from Reddit, StockTwits & news, scored with FinBERT
+      </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -83,15 +91,10 @@ def _safe_ticker(raw: str, default: str = "TSLA") -> str:
 current_ticker = _safe_ticker(st.query_params.get("ticker", "TSLA"))
 
 
-# ── Search bar (Streamlit native — works everywhere) ───────────────────
+# ── Search bar ─────────────────────────────────────────────────────────
 with st.form("ticker_search", clear_on_submit=False):
-    c1, c2, c3 = st.columns([1, 6, 2])
+    c1, c2 = st.columns([8, 2])
     with c1:
-        st.markdown(
-            "<div style='font-size:22px;font-weight:700;color:#3B82F6;padding-top:6px;'>⚡ SentimentIQ</div>",
-            unsafe_allow_html=True,
-        )
-    with c2:
         new_ticker = st.text_input(
             "Ticker",
             value=current_ticker,
@@ -99,7 +102,7 @@ with st.form("ticker_search", clear_on_submit=False):
             placeholder="Enter ticker (e.g. TSLA, AAPL, NVDA)",
             key="ticker_input",
         )
-    with c3:
+    with c2:
         submitted = st.form_submit_button(
             "🔍 Analyse",
             use_container_width=True,
@@ -113,6 +116,40 @@ if submitted:
         st.rerun()
 
 
+# ── Defaults — used to backfill any missing fields so React never crashes
+_FALLBACK_FIELDS = {
+    "company": "—",
+    "price": 0.0,
+    "changePct": 0.0,
+    "score": 50.0,
+    "confidence": "Low",
+    "mentions": 0,
+    "bullPct": 50,
+    "trendDelta": 0.0,
+    "trendDirection": "Stable",
+    "trend": [],
+    "hotTopics": [],
+    "sources": {
+        "reddit": {"score": None, "count": 0, "topPost": None, "error": None},
+        "stocktwits": {"score": None, "count": 0, "bull": 0, "bear": 0, "error": None},
+        "news": {"score": None, "count": 0, "topHeadline": None, "error": None},
+    },
+    "errors": {},
+}
+
+
+def _normalise(result: dict, ticker: str) -> dict:
+    """Ensure result has every field the React app reads, filling gaps with safe defaults."""
+    out = {**_FALLBACK_FIELDS, **(result or {})}
+    out["ticker"] = result.get("ticker", ticker)
+    # Merge nested 'sources' so missing sub-keys don't crash React
+    sources = {**_FALLBACK_FIELDS["sources"], **(result.get("sources") or {})}
+    for k, v in sources.items():
+        sources[k] = {**_FALLBACK_FIELDS["sources"][k], **(v or {})}
+    out["sources"] = sources
+    return out
+
+
 # ── Run analysis (cached 5 min per ticker) ─────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def get_analysis(t: str) -> dict:
@@ -120,23 +157,37 @@ def get_analysis(t: str) -> dict:
     return _run_analysis(t)
 
 
+error_message = None
+trace = None
 with st.spinner(
-    f"Fetching Reddit, StockTwits & News for ${current_ticker}, then scoring with FinBERT…"
+    f"Analysing ${current_ticker} — fetching Reddit, StockTwits & News, then scoring with FinBERT… "
+    "(first load can take 1–3 minutes while the model downloads)"
 ):
     try:
         result = get_analysis(current_ticker)
     except Exception as exc:
-        result = {
-            "ticker": current_ticker,
-            "error": str(exc),
-            "errors": {"_global": str(exc)},
-        }
+        error_message = str(exc)
+        trace = traceback.format_exc()
+        result = {"ticker": current_ticker, "error": error_message}
+
+# Surface any error prominently so we can see what's failing on Streamlit Cloud
+if error_message:
+    st.error(f"Analysis crashed: **{error_message}**")
+    with st.expander("Show full traceback"):
+        st.code(trace, language="text")
+elif result.get("error"):
+    st.warning(f"Partial result — {result['error']}")
+
+# Show the raw result for debugging (collapsible — won't clutter normal use)
+with st.expander("🔧 Debug: raw analysis result"):
+    st.json(result)
 
 
 # ── Inject result into HTML and render ─────────────────────────────────
+result_full = _normalise(result, current_ticker)
 html_path = pathlib.Path(__file__).parent / "frontend" / "SentimentIQ.html"
 html = html_path.read_text(encoding="utf-8")
-safe_json = json.dumps(result).replace("</", "<\\/")
+safe_json = json.dumps(result_full).replace("</", "<\\/")
 html = html.replace("__INITIAL_DATA_JSON__", safe_json)
 
 st.components.v1.html(html, height=2900, scrolling=False)
