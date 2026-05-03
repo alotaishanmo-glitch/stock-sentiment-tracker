@@ -91,6 +91,19 @@ def _safe_ticker(raw: str, default: str = "TSLA") -> str:
 current_ticker = _safe_ticker(st.query_params.get("ticker", "TSLA"))
 
 
+def _safe_days(raw, default: int = 7) -> int:
+    try:
+        d = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if d in (7, 30, 90, 365):
+        return d
+    return default
+
+
+current_days = _safe_days(st.query_params.get("days", "7"))
+
+
 # ── Search bar ─────────────────────────────────────────────────────────
 with st.form("ticker_search", clear_on_submit=False):
     c1, c2 = st.columns([8, 2])
@@ -113,6 +126,7 @@ if submitted:
     cleaned = _safe_ticker(new_ticker, default=current_ticker)
     if cleaned != current_ticker:
         st.query_params["ticker"] = cleaned
+        st.query_params["days"] = str(current_days)
         st.rerun()
 
 
@@ -152,9 +166,9 @@ def _normalise(result: dict, ticker: str) -> dict:
 
 # ── Run analysis (cached 5 min per ticker) ─────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
-def get_analysis(t: str) -> dict:
+def get_analysis(t: str, days: int = 7) -> dict:
     from api_server import _run_analysis
-    return _run_analysis(t)
+    return _run_analysis(t, days=days)
 
 
 error_message = None
@@ -164,7 +178,7 @@ with st.spinner(
     "(first load can take 1–3 minutes while the model downloads)"
 ):
     try:
-        result = get_analysis(current_ticker)
+        result = get_analysis(current_ticker, current_days)
     except Exception as exc:
         error_message = str(exc)
         trace = traceback.format_exc()
