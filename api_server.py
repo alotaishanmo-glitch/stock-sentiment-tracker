@@ -59,8 +59,8 @@ def _run_analysis(ticker: str, days: int = 7, limit: int = 50) -> dict:
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = {
             "reddit": pool.submit(reddit_scraper.fetch_all, ticker, limit, days),
-            "stocktwits": pool.submit(stocktwits_scraper.fetch_messages, ticker, 30),
-            "news": pool.submit(news_scraper.fetch_headlines, ticker, 20),
+            "stocktwits": pool.submit(stocktwits_scraper.fetch_messages, ticker, 50),
+            "news": pool.submit(news_scraper.fetch_headlines, ticker, 50),
         }
         for source, fut in futures.items():
             try:
@@ -99,6 +99,13 @@ def _run_analysis(ticker: str, days: int = 7, limit: int = 50) -> dict:
     confidence_full = sent.compute_confidence(source_scores)
     # "High (low variance ...)" → "High"
     confidence = confidence_full.split("(")[0].strip().split()[0]
+    confidence_score = sent.compute_confidence_score(source_scores)
+
+    # Source diversity = % of the 3 sources that returned data, scaled 0-100
+    active_sources = sum(
+        1 for s in (scored_reddit, scored_st, scored_news) if s
+    )
+    source_diversity = round(active_sources / 3 * 100)
 
     daily_trend = sent.compute_daily_trend(all_scored, days=days)
     trend_direction, trend_delta = sent.detect_trend_direction(daily_trend)
@@ -125,6 +132,8 @@ def _run_analysis(ticker: str, days: int = 7, limit: int = 50) -> dict:
         "changePct": price_info["changePct"],
         "score": overall_score,
         "confidence": confidence,
+        "confidenceScore": confidence_score,
+        "sourceDiversity": source_diversity,
         "mentions": len(all_scored),
         "bullPct": bull_pct,
         "trendDelta": round(trend_delta, 1),

@@ -28,7 +28,7 @@
     --yellow: #FACC15;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; -webkit-overflow-scrolling: touch; overflow-x: hidden; }
   body {
     background:
       radial-gradient(900px 500px at 80% -10%, rgba(99,102,241,0.10), transparent 60%),
@@ -437,12 +437,12 @@ function Gauge({ score = 72.4, size = 360 }) {
         <circle cx={cx} cy={cy} r="9" fill="#0A0A0F" stroke={animZone.color} strokeWidth="2" />
         <circle cx={cx} cy={cy} r="3" fill={animZone.color} />
       </svg>
-      <div style={{ position: "absolute", left: 0, right: 0, top: cy + 24, textAlign: "center", pointerEvents: "none" }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: size * 0.18, pointerEvents: "none" }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 6, textAlign: "center" }}>
           Sentiment Score
         </div>
-        <div className="mono" style={{ fontSize: size * 0.18, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1, color: "white", textShadow: `0 0 28px ${animZone.color}66` }}>
-          {animatedScore.toFixed(1)}
+        <div className="mono" style={{ fontSize: size * 0.18, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1, color: "white", textShadow: `0 0 28px ${animZone.color}66`, textAlign: "center", display: "flex", alignItems: "baseline", justifyContent: "center" }}>
+          <span>{animatedScore.toFixed(1)}</span>
           <span style={{ fontSize: size * 0.06, color: "var(--text-3)", fontWeight: 500, marginLeft: 4 }}>/100</span>
         </div>
       </div>
@@ -468,9 +468,40 @@ function smoothPath(points) {
 function TrendChart({ data }) {
   const W = 880, H = 260, padL = 44, padR = 28, padT = 24, padB = 32;
   const innerW = W - padL - padR, innerH = H - padT - padB;
-  const xFor = (i) => padL + (i / (data.length - 1)) * innerW;
+
+  // Guard: empty or null data
+  const safeData = Array.isArray(data) ? data.filter(d => d && typeof d === "object") : [];
+  if (safeData.length < 2) {
+    return (
+      <div style={{ width: "100%", height: H, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13 }}>
+        Not enough trend data to render — try a wider range.
+      </div>
+    );
+  }
+
+  // Replace nulls by linear interpolation between nearest neighbours so the line stays continuous
+  const filled = safeData.map(d => ({ ...d, score: typeof d.score === "number" ? d.score : null }));
+  for (let i = 0; i < filled.length; i++) {
+    if (filled[i].score == null) {
+      let prev = i - 1, next = i + 1;
+      while (prev >= 0 && filled[prev].score == null) prev--;
+      while (next < filled.length && filled[next].score == null) next++;
+      const pv = prev >= 0 ? filled[prev].score : null;
+      const nv = next < filled.length ? filled[next].score : null;
+      if (pv != null && nv != null) filled[i].score = pv + (nv - pv) * ((i - prev) / (next - prev));
+      else if (pv != null) filled[i].score = pv;
+      else if (nv != null) filled[i].score = nv;
+      else filled[i].score = 50;
+    }
+  }
+
+  // For long ranges (>14 days), only label every Nth tick so the x-axis doesn't crowd
+  const N = filled.length;
+  const labelStride = N <= 10 ? 1 : N <= 30 ? Math.ceil(N / 8) : N <= 90 ? Math.ceil(N / 8) : Math.ceil(N / 10);
+
+  const xFor = (i) => padL + (i / (N - 1)) * innerW;
   const yFor = (v) => padT + (1 - v / 100) * innerH;
-  const points = data.map((d, i) => ({ x: xFor(i), y: yFor(d.score), ...d }));
+  const points = filled.map((d, i) => ({ x: xFor(i), y: yFor(d.score), ...d }));
   const pathD = smoothPath(points);
   const areaD = pathD + ` L ${points[points.length - 1].x} ${padT + innerH} L ${points[0].x} ${padT + innerH} Z`;
   const [hover, setHover] = React.useState(null);
@@ -511,14 +542,20 @@ function TrendChart({ data }) {
         <path d={pathD} stroke="url(#lineGrad)" strokeWidth="6" fill="none" filter="url(#lineGlow)" opacity="0.6" />
         <path d={pathD} stroke="url(#lineGrad)" strokeWidth="2.2" fill="none" strokeLinecap="round" />
         {points.map((p, i) => (
-          <text key={i} x={p.x} y={H - 10} fill="rgba(255,255,255,0.45)" fontSize="11" fontFamily="JetBrains Mono, monospace" textAnchor="middle">{p.day}</text>
+          (i % labelStride === 0 || i === N - 1) && (
+            <text key={`l-${i}`} x={p.x} y={H - 10} fill="rgba(255,255,255,0.45)" fontSize="11" fontFamily="JetBrains Mono, monospace" textAnchor="middle">{N > 30 ? (p.date || p.day) : p.day}</text>
+          )
         ))}
-        {points.map((p, i) => (
-          <g key={i}>
-            {hover === i && <circle cx={p.x} cy={p.y} r="10" fill="#3B82F6" opacity="0.18" />}
-            <circle cx={p.x} cy={p.y} r={hover === i ? 5 : 3.5} fill="#0A0A0F" stroke="#3B82F6" strokeWidth="2" />
-          </g>
-        ))}
+        {points.map((p, i) => {
+          const showDot = N <= 14 || i % labelStride === 0 || i === N - 1 || hover === i;
+          if (!showDot) return null;
+          return (
+            <g key={`d-${i}`}>
+              {hover === i && <circle cx={p.x} cy={p.y} r="10" fill="#3B82F6" opacity="0.18" />}
+              <circle cx={p.x} cy={p.y} r={hover === i ? 5 : 3} fill="#0A0A0F" stroke="#3B82F6" strokeWidth="2" />
+            </g>
+          );
+        })}
         {hover !== null && (
           <line x1={points[hover].x} y1={padT} x2={points[hover].x} y2={padT + innerH}
                 stroke="rgba(59,130,246,0.4)" strokeWidth="1" strokeDasharray="3 3" />
@@ -770,14 +807,15 @@ function Hero({ ticker, company, price, changePct }) {
 }
 
 // ── Score card ─────────────────────────────────────────────────────────
-function ScoreCard({ score, confidence }) {
+function ScoreCard({ score, confidence, days = 7 }) {
   const z = zoneFor(score);
+  const rangeShort = days >= 365 ? "1-year" : days >= 90 ? "90-day" : days >= 30 ? "30-day" : "7-day";
   return (
     <Card interactive={false} style={{ padding: "32px 28px 28px", background: "linear-gradient(180deg, rgba(20,20,28,0.85), rgba(14,14,20,0.85))", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(500px 200px at 50% 100%, ${z.color}18, transparent 60%)` }} />
       <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <CardHeader icon={<IconShield size={14} />} title="Sentiment Score" />
-        <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>7-day weighted · FinBERT</div>
+        <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{rangeShort} weighted · FinBERT</div>
       </div>
       <div style={{ marginTop: 14 }}><Gauge score={score} size={420} /></div>
       <div style={{ marginTop: -8, display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
@@ -798,7 +836,9 @@ function StatCard({ icon, title, children }) {
     <Card><CardHeader icon={icon} title={title} /><div style={{ marginTop: 14 }}>{children}</div></Card>
   );
 }
-function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving" }) {
+function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving", days = 7 }) {
+  const rangeLabel = days >= 365 ? "year" : days >= 90 ? "quarter" : days >= 30 ? "month" : "week";
+  const rangeShort = days >= 365 ? "1y" : days >= 90 ? "90d" : days >= 30 ? "30d" : "7d";
   const isImproving = trendDirection === "Improving";
   const isDeclining = trendDirection === "Declining";
   const trendColor = isImproving ? "#34D399" : isDeclining ? "#F87171" : "var(--text-2)";
@@ -811,7 +851,7 @@ function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving" 
     <div className="stats-row" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
       <StatCard icon={<IconChat size={14}/>} title="Mention Volume">
         <div className="mono" style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1 }}>{mentions}</div>
-        <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Total mentions this week</div>
+        <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Total mentions this {rangeLabel}</div>
         <svg viewBox="0 0 120 24" width="100%" height="24" style={{ marginTop: 10 }}>
           <polyline points="0,18 15,15 30,16 45,10 60,12 75,7 90,9 105,4 120,5"
                     fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -829,7 +869,7 @@ function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving" 
         <div style={{ marginTop: 10, color: "var(--text-3)", fontSize: 12 }}>Based on {mentions} classified posts</div>
       </StatCard>
 
-      <StatCard icon={<IconTrend size={14}/>} title="Trend (7d)">
+      <StatCard icon={<IconTrend size={14}/>} title={`Trend (${rangeShort})`}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ color: trendColor, fontSize: 22, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ display: "inline-grid", placeItems: "center", width: 28, height: 28, borderRadius: 7, background: `${trendColor}1a`, border: `1px solid ${trendColor}30` }}>
@@ -839,7 +879,7 @@ function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving" 
           </div>
         </div>
         <div className="mono" style={{ marginTop: 8, color: "var(--text-2)", fontSize: 13 }}>
-          <span style={{ color: trendColor }}>{isImproving ? "+" : isDeclining ? "-" : ""}{absDelta.toFixed(1)} pts</span> over 7 days
+          <span style={{ color: trendColor }}>{isImproving ? "+" : isDeclining ? "-" : ""}{absDelta.toFixed(1)} pts</span> over {days} days
         </div>
         <div style={{ marginTop: 12, display: "flex", gap: 3, alignItems: "flex-end", height: 22 }}>
           {[8,10,7,12,9,15,17].map((h, i) => (
@@ -1049,7 +1089,7 @@ function SourceBreakdown({ sources, errors, ticker }) {
       }
       {newsError
         ? <SourceWarningCard name="News" message={newsError} />
-        : <SourceCard icon={<IconNews size={18}/>} name="News" score={newsScore} count={newsCount} countLabel="headlines in last 7d" accent="#A78BFA" body={newsBody} />
+        : <SourceCard icon={<IconNews size={18}/>} name="News" score={newsScore} count={newsCount} countLabel="recent headlines" accent="#A78BFA" body={newsBody} />
       }
     </div>
   );
@@ -1202,14 +1242,75 @@ function App() {
         <div style={{ height: 28 }} />
 
         <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16, alignItems: "start" }}>
-          <ScoreCard score={tweaks.score} confidence={tweaks.confidence} />
+          <ScoreCard score={tweaks.score} confidence={tweaks.confidence} days={(apiData && apiData.days) || 7} />
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Card>
               <CardHeader icon={<IconSparkle size={14}/>} title="AI Summary" />
               <div style={{ marginTop: 12, color: "var(--text)", fontSize: 13.5, lineHeight: 1.6 }}>
-                Sentiment around <span style={{ color: "white", fontWeight: 600 }}>${tweaks.ticker}</span> has shifted
-                <span style={{ color: zoneFor(tweaks.score).color, fontWeight: 600 }}> {zoneFor(tweaks.score).label.toLowerCase()} </span>
-                this week. Reddit is the most active source, while news sentiment provides directional confirmation. Monitor for shifts before earnings.
+                {(() => {
+                  const z = zoneFor(tweaks.score);
+                  const zLabel = z.label.toLowerCase();
+                  const score = (tweaks.score || 0).toFixed(1);
+                  const bullPct = tweaks.bullPct || 50;
+                  const mentions = tweaks.mentions || 0;
+                  const trendDelta = apiData ? (apiData.trendDelta || 0) : 0;
+                  const trendDir = (apiData && apiData.trendDirection) || "Stable";
+                  const trendDeltaStr = `${trendDelta >= 0 ? "+" : ""}${trendDelta.toFixed(1)}`;
+                  const days = (apiData && apiData.days) || 7;
+
+                  // Determine top source by count
+                  let topSource = "Reddit";
+                  let topCount = 0;
+                  if (apiData && apiData.sources) {
+                    const counts = {
+                      Reddit: (apiData.sources.reddit && apiData.sources.reddit.count) || 0,
+                      StockTwits: (apiData.sources.stocktwits && apiData.sources.stocktwits.count) || 0,
+                      News: (apiData.sources.news && apiData.sources.news.count) || 0,
+                    };
+                    topSource = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+                    topCount = counts[topSource];
+                  }
+
+                  // Score-zone-specific opening lines (6+ variations)
+                  const openings = {
+                    "Bearish": [
+                      `Retail chatter on $${tweaks.ticker} is decisively negative — sentiment is sitting at ${score}/100, well into bearish territory.`,
+                      `$${tweaks.ticker} is taking heavy criticism this period. Aggregate sentiment has dropped to ${score}/100, with bears outweighing bulls roughly ${100 - bullPct}-to-${bullPct}.`,
+                    ],
+                    "Slightly Bearish": [
+                      `Sentiment on $${tweaks.ticker} is leaning negative at ${score}/100. Caution dominates the conversation but the tone hasn't fully turned hostile.`,
+                      `The mood around $${tweaks.ticker} is cautiously bearish — a ${score}/100 score reflects mixed posts with a negative tilt (${bullPct}% bull / ${100 - bullPct}% bear).`,
+                    ],
+                    "Slightly Bullish": [
+                      `$${tweaks.ticker} is generating cautiously optimistic chatter at ${score}/100 — bulls have a slight edge (${bullPct}% bull / ${100 - bullPct}% bear) but conviction is split.`,
+                      `Sentiment on $${tweaks.ticker} sits in mildly bullish territory (${score}/100). Posts skew positive but there's a meaningful bear voice in the mix.`,
+                    ],
+                    "Bullish": [
+                      `$${tweaks.ticker} is the talk of retail right now — sentiment has rallied to ${score}/100, with ${bullPct}% of classified posts leaning bullish.`,
+                      `Strong tailwind for $${tweaks.ticker}: a ${score}/100 sentiment score puts it firmly in bullish territory across Reddit, StockTwits, and news.`,
+                    ],
+                  };
+                  const pool = openings[z.label] || openings["Slightly Bullish"];
+                  const opening = pool[Math.floor(tweaks.score) % pool.length];
+
+                  // Volume + source line
+                  const volumeLine = mentions === 0
+                    ? `No posts were collected this period — try a different ticker or wait for the rate limits to reset.`
+                    : mentions < 20
+                      ? `Volume is light (${mentions} posts in the last ${days}d) so the signal is preliminary.`
+                      : mentions < 80
+                        ? `Volume is moderate at ${mentions} posts over ${days}d, with ${topSource} contributing ${topCount}.`
+                        : `Volume is strong — ${mentions} classified posts in the last ${days}d, led by ${topSource} (${topCount}).`;
+
+                  // Trend line
+                  const trendLine = trendDir === "Improving"
+                    ? `Momentum is improving (${trendDeltaStr} pts over the window) — sentiment is stronger now than at the start of the period.`
+                    : trendDir === "Declining"
+                      ? `Momentum is fading (${trendDeltaStr} pts over the window) — sentiment has weakened versus the start of the period.`
+                      : `The trend is stable — sentiment hasn't moved meaningfully (${trendDeltaStr} pts) across the window.`;
+
+                  return <span><span style={{ color: "white", fontWeight: 600 }}>{opening.split("$" + tweaks.ticker)[0]}</span><span style={{ color: z.color, fontWeight: 600 }}>${tweaks.ticker}</span>{opening.split("$" + tweaks.ticker)[1]} {volumeLine} {trendLine}</span>;
+                })()}
               </div>
               <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {(hotTopicsData.slice(0, 3)).map(t => (
@@ -1220,15 +1321,34 @@ function App() {
             <Card>
               <CardHeader icon={<IconShield size={14}/>} title="Signal Quality" />
               <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  { label: "Volume", v: Math.min(100, Math.round(tweaks.mentions / 3)), color: "#3B82F6" },
-                  { label: "Source diversity", v: apiData ? 72 : 72, color: "#6366F1" },
-                  { label: "Model certainty", v: tweaks.confidence === "High" ? 91 : tweaks.confidence === "Medium" ? 68 : 45, color: "#34D399" },
-                ].map(b => (
+                {(() => {
+                  // Volume: 0-10 scale based on raw mention count, then *10 for percent display
+                  const volRaw = Math.min(10, Math.round((tweaks.mentions || 0) / 20));
+                  const volPct = volRaw * 10;
+                  // Source diversity: derive from how many of the 3 sources actually have data
+                  let activeSources = 0;
+                  if (apiData && apiData.sources) {
+                    if (apiData.sources.reddit && apiData.sources.reddit.count > 0) activeSources++;
+                    if (apiData.sources.stocktwits && apiData.sources.stocktwits.count > 0) activeSources++;
+                    if (apiData.sources.news && apiData.sources.news.count > 0) activeSources++;
+                  }
+                  const diversityPct = apiData
+                    ? (typeof apiData.sourceDiversity === "number" ? apiData.sourceDiversity : Math.round(activeSources / 3 * 100))
+                    : 0;
+                  // Model certainty: prefer numeric confidenceScore from API, fall back to mapping
+                  const certaintyPct = apiData && typeof apiData.confidenceScore === "number"
+                    ? apiData.confidenceScore
+                    : (tweaks.confidence === "High" ? 91 : tweaks.confidence === "Medium" ? 68 : 45);
+                  return [
+                    { label: "Volume", v: volPct, display: `${volRaw}/10`, color: "#3B82F6" },
+                    { label: "Source diversity", v: diversityPct, display: `${diversityPct}%`, color: "#6366F1" },
+                    { label: "Model certainty", v: certaintyPct, display: `${certaintyPct}`, color: "#34D399" },
+                  ];
+                })().map(b => (
                   <div key={b.label}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-2)" }}>
                       <span>{b.label}</span>
-                      <span className="mono" style={{ color: "white" }}>{b.v}</span>
+                      <span className="mono" style={{ color: "white" }}>{b.display}</span>
                     </div>
                     <div style={{ marginTop: 5, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)" }}>
                       <div style={{ width: `${b.v}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${b.color}aa, ${b.color})`, boxShadow: `0 0 8px ${b.color}66` }}/>
@@ -1241,7 +1361,7 @@ function App() {
         </div>
 
         <div style={{ height: 16 }} />
-        <StatsRow mentions={tweaks.mentions} bullPct={tweaks.bullPct} trendDelta={tweaks.trendDelta} trendDirection={trendDirection} />
+        <StatsRow mentions={tweaks.mentions} bullPct={tweaks.bullPct} trendDelta={tweaks.trendDelta} trendDirection={trendDirection} days={(apiData && apiData.days) || 7} />
 
         <div style={{ height: 16 }} />
         <TrendCard
@@ -1249,6 +1369,8 @@ function App() {
           currentDays={apiData && apiData.days ? apiData.days : 7}
           onChangeRange={(d) => {
             if (IS_STREAMLIT) {
+              // Show loading immediately so the parent rerun doesn't feel like a crash
+              setLoading(true);
               const a = document.createElement('a');
               a.style.display = 'none';
               a.target = '_top';

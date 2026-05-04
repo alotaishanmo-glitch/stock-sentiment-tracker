@@ -137,11 +137,14 @@ _FALLBACK_FIELDS = {
     "changePct": 0.0,
     "score": 50.0,
     "confidence": "Low",
+    "confidenceScore": 0,
+    "sourceDiversity": 0,
     "mentions": 0,
     "bullPct": 50,
     "trendDelta": 0.0,
     "trendDirection": "Stable",
     "trend": [],
+    "days": 7,
     "hotTopics": [],
     "sources": {
         "reddit": {"score": None, "count": 0, "topPost": None, "error": None},
@@ -204,4 +207,4 @@ html = html_path.read_text(encoding="utf-8")
 safe_json = json.dumps(result_full).replace("</", "<\\/")
 html = html.replace("__INITIAL_DATA_JSON__", safe_json)
 
-st.components.v1.html(html, height=2900, scrolling=False)
+st.components.v1.html(html, height=3600, scrolling=True)

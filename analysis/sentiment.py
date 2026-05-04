@@ -228,6 +228,30 @@ def compute_confidence(source_scores: Dict[str, Optional[float]]) -> str:
     return "Low (high variance across sources)"
 
 
+def compute_confidence_score(source_scores: Dict[str, Optional[float]]) -> int:
+    """
+    Numeric confidence in [0, 100] derived from inverse variance + source coverage.
+
+    More sources agreeing → higher score. Single source caps at ~45.
+    """
+    valid = [s for s in source_scores.values() if s is not None]
+    if not valid:
+        return 0
+    if len(valid) == 1:
+        return 45  # single source — cannot triangulate
+
+    mean = sum(valid) / len(valid)
+    variance = sum((s - mean) ** 2 for s in valid) / len(valid)
+
+    # Map variance ∈ [0, 400+] → score ∈ [100, ~30]
+    # variance 0 → 100, variance 25 → ~88, variance 100 → ~67, variance 400 → ~33
+    raw = 100 * math.exp(-variance / 200)
+
+    # Boost when all 3 sources are present
+    coverage_bonus = 5 if len(valid) >= 3 else 0
+    return min(100, max(0, round(raw + coverage_bonus)))
+
+
 def bull_bear_ratio(all_scored: List[Dict[str, Any]]) -> Tuple[int, int]:
     """
     Count bullish (compound > 0) vs bearish (compound < 0) items across all sources.
