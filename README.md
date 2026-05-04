@@ -143,11 +143,26 @@ stock-sentiment-tracker/
 
 ---
 
+## 🆕 Recent Updates
+
+### v0.4.3 — Dashboard polish & bug fixes
+- **Signal Quality card** now shows live data — Volume is derived from total mention count, Source Diversity reflects how many of the 3 sources returned data, and Model Certainty is a real numeric score (0–100) computed from variance across source scores
+- **AI Summary** rewritten with 8 score-zone-based variations that incorporate the ticker, sentiment score, bull/bear ratio, mention volume, top source, and trend direction — no more static copy
+- **Trend chart** fixed — null-score days are now interpolated, empty data shows a graceful fallback message, and x-axis labels adapt automatically for 7D / 30D / 90D / 1Y ranges
+- **Range buttons (30D / 90D / 1Y)** now show a loading overlay immediately on click so the Streamlit rerun no longer feels like a page crash
+- **Mention count** bumped: news scraper limit raised from 20 → 50 and StockTwits from 30 → 50, giving richer signal for the bull/bear ratio
+- **iOS Safari scroll** fixed — iframe height increased to 3600px with `scrolling=True`; users can now scroll past the News Source Breakdown
+- **Sentiment score** is now properly centered inside the gauge arc on all screen sizes
+
 ## 🗺 Roadmap
 
 - [x] Streamlit web dashboard
 - [x] Public deployment
 - [x] Server-side analysis (no client-side fetches)
+- [x] Live Signal Quality metrics (volume, source diversity, model certainty)
+- [x] Dynamic AI summary with zone-based copy
+- [x] Multi-range trend chart (7D / 30D / 90D / 1Y)
+- [x] iOS Safari scroll fix
 - [ ] Multi-ticker comparison view
 - [ ] Email/Slack alerts when sentiment shifts > X points
 - [ ] Historical score database (SQLite)
