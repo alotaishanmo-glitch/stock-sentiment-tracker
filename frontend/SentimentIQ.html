@@ -437,12 +437,12 @@ function Gauge({ score = 72.4, size = 360 }) {
         <circle cx={cx} cy={cy} r="9" fill="#0A0A0F" stroke={animZone.color} strokeWidth="2" />
         <circle cx={cx} cy={cy} r="3" fill={animZone.color} />
       </svg>
-      <div style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: size * 0.18, pointerEvents: "none" }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 6, textAlign: "center" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: cy + 16, textAlign: "center", pointerEvents: "none" }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
           Sentiment Score
         </div>
-        <div className="mono" style={{ fontSize: size * 0.18, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1, color: "white", textShadow: `0 0 28px ${animZone.color}66`, textAlign: "center", display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-          <span>{animatedScore.toFixed(1)}</span>
+        <div className="mono" style={{ fontSize: size * 0.18, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1, color: "white", textShadow: `0 0 28px ${animZone.color}66` }}>
+          {animatedScore.toFixed(1)}
           <span style={{ fontSize: size * 0.06, color: "var(--text-3)", fontWeight: 500, marginLeft: 4 }}>/100</span>
         </div>
       </div>
@@ -469,35 +469,34 @@ function TrendChart({ data }) {
   const W = 880, H = 260, padL = 44, padR = 28, padT = 24, padB = 32;
   const innerW = W - padL - padR, innerH = H - padT - padB;
 
-  // Guard: empty or null data
-  const safeData = Array.isArray(data) ? data.filter(d => d && typeof d === "object") : [];
+  // Guard: empty or null data — only plot days that have real posts (volume > 0)
+  const allData = Array.isArray(data) ? data.filter(d => d && typeof d === "object") : [];
+  const safeData = allData.filter(d => (d.volume || 0) > 0 && typeof d.score === "number");
   if (safeData.length < 2) {
+    // Show single-point summary if exactly 1 day has data
+    if (safeData.length === 1) {
+      const d = safeData[0];
+      const z = zoneFor(d.score);
+      return (
+        <div style={{ width: "100%", height: H, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div style={{ color: "var(--text-3)", fontSize: 13 }}>Only 1 day of data available ({d.date || d.day})</div>
+          <div className="mono" style={{ fontSize: 32, fontWeight: 600, color: z.color }}>{d.score.toFixed(1)}</div>
+          <div style={{ color: z.color, fontSize: 12 }}>{z.label}</div>
+          <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 4 }}>More data points needed to show a trend line</div>
+        </div>
+      );
+    }
     return (
       <div style={{ width: "100%", height: H, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13 }}>
-        Not enough trend data to render — try a wider range.
+        No trend data available yet — check back after more posts are collected.
       </div>
     );
   }
 
-  // Replace nulls by linear interpolation between nearest neighbours so the line stays continuous
-  const filled = safeData.map(d => ({ ...d, score: typeof d.score === "number" ? d.score : null }));
-  for (let i = 0; i < filled.length; i++) {
-    if (filled[i].score == null) {
-      let prev = i - 1, next = i + 1;
-      while (prev >= 0 && filled[prev].score == null) prev--;
-      while (next < filled.length && filled[next].score == null) next++;
-      const pv = prev >= 0 ? filled[prev].score : null;
-      const nv = next < filled.length ? filled[next].score : null;
-      if (pv != null && nv != null) filled[i].score = pv + (nv - pv) * ((i - prev) / (next - prev));
-      else if (pv != null) filled[i].score = pv;
-      else if (nv != null) filled[i].score = nv;
-      else filled[i].score = 50;
-    }
-  }
+  const filled = safeData;
 
-  // For long ranges (>14 days), only label every Nth tick so the x-axis doesn't crowd
   const N = filled.length;
-  const labelStride = N <= 10 ? 1 : N <= 30 ? Math.ceil(N / 8) : N <= 90 ? Math.ceil(N / 8) : Math.ceil(N / 10);
+  const labelStride = N <= 10 ? 1 : Math.ceil(N / 8);
 
   const xFor = (i) => padL + (i / (N - 1)) * innerW;
   const yFor = (v) => padT + (1 - v / 100) * innerH;
@@ -836,14 +835,15 @@ function StatCard({ icon, title, children }) {
     <Card><CardHeader icon={icon} title={title} /><div style={{ marginTop: 14 }}>{children}</div></Card>
   );
 }
-function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving", days = 7 }) {
+function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving", days = 7, apiData = null }) {
   const rangeLabel = days >= 365 ? "year" : days >= 90 ? "quarter" : days >= 30 ? "month" : "week";
   const rangeShort = days >= 365 ? "1y" : days >= 90 ? "90d" : days >= 30 ? "30d" : "7d";
   const isImproving = trendDirection === "Improving";
   const isDeclining = trendDirection === "Declining";
+  const isInsufficient = trendDirection === "Insufficient Data";
   const trendColor = isImproving ? "#34D399" : isDeclining ? "#F87171" : "var(--text-2)";
   const TrendIcon = isImproving ? IconArrowUp : isDeclining ? IconArrowDown : IconArrowRight;
-  const trendLabel = trendDirection;
+  const trendLabel = isInsufficient ? "Not enough history" : trendDirection;
   const deltaSign = trendDelta >= 0 ? "+" : "";
   const absDelta = Math.abs(trendDelta);
 
@@ -879,7 +879,10 @@ function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving",
           </div>
         </div>
         <div className="mono" style={{ marginTop: 8, color: "var(--text-2)", fontSize: 13 }}>
-          <span style={{ color: trendColor }}>{isImproving ? "+" : isDeclining ? "-" : ""}{absDelta.toFixed(1)} pts</span> over {days} days
+          {isInsufficient
+            ? <span style={{ color: "var(--text-3)" }}>Need 2+ days of data</span>
+            : <><span style={{ color: trendColor }}>{isImproving ? "+" : isDeclining ? "-" : ""}{absDelta.toFixed(1)} pts</span> over {days} days</>
+          }
         </div>
         <div style={{ marginTop: 12, display: "flex", gap: 3, alignItems: "flex-end", height: 22 }}>
           {[8,10,7,12,9,15,17].map((h, i) => (
@@ -889,54 +892,47 @@ function StatsRow({ mentions, bullPct, trendDelta, trendDirection = "Improving",
       </StatCard>
 
       <StatCard icon={<IconDatabase size={14}/>} title="Sources Active">
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <div className="mono" style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1 }}>3</div>
-          <div style={{ color: "var(--text-2)", fontSize: 13 }}>Sources</div>
-        </div>
-        <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["Reddit", "StockTwits", "News"].map(s => (
-            <div key={s} style={{ padding: "4px 10px", fontSize: 11, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line-strong)", color: "var(--text-2)", display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#34D399", boxShadow: "0 0 6px #34D399" }}/>{s}
-            </div>
-          ))}
-        </div>
+        {(() => {
+          const sourceList = [
+            { name: "Reddit", key: "reddit" },
+            { name: "StockTwits", key: "stocktwits" },
+            { name: "News", key: "news" },
+          ];
+          const srcs = (typeof apiData !== "undefined" && apiData && apiData.sources) ? apiData.sources : null;
+          const activeCount = srcs
+            ? sourceList.filter(s => srcs[s.key] && srcs[s.key].count > 0).length
+            : 0;
+          return (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <div className="mono" style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1 }}>{activeCount}</div>
+                <div style={{ color: "var(--text-2)", fontSize: 13 }}>of 3 Sources</div>
+              </div>
+              <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {sourceList.map(s => {
+                  const isActive = srcs && srcs[s.key] && srcs[s.key].count > 0;
+                  return (
+                    <div key={s.name} style={{ padding: "4px 10px", fontSize: 11, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line-strong)", color: isActive ? "var(--text-2)" : "var(--text-3)", display: "flex", alignItems: "center", gap: 5, opacity: isActive ? 1 : 0.5 }}>
+                      <span style={{ width: 5, height: 5, borderRadius: 999, background: isActive ? "#34D399" : "#5C5E6B", boxShadow: isActive ? "0 0 6px #34D399" : "none" }}/>{s.name}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </StatCard>
     </div>
   );
 }
 
 // ── Trend card ─────────────────────────────────────────────────────────
-const RANGE_DAYS = { "7D": 7, "30D": 30, "90D": 90, "1Y": 365 };
-
-function TrendCard({ trendData, currentDays, onChangeRange }) {
-  const ranges = ["7D", "30D", "90D", "1Y"];
-  const activeLabel = (Object.entries(RANGE_DAYS).find(([, d]) => d === currentDays) || ["7D"])[0];
-  const titleMap = { "7D": "7-Day", "30D": "30-Day", "90D": "90-Day", "1Y": "1-Year" };
+function TrendCard({ trendData }) {
   return (
     <Card interactive={false} style={{ padding: "22px 24px 14px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <CardHeader icon={<IconTrend size={14}/>} title={`${titleMap[activeLabel]} Sentiment Trend`} />
-          <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Hover to inspect daily score</div>
-        </div>
-        <div className="trend-range" style={{ display: "flex", gap: 6 }}>
-          {ranges.map(r => {
-            const active = r === activeLabel;
-            return (
-              <button
-                key={r}
-                onClick={() => onChangeRange && onChangeRange(RANGE_DAYS[r])}
-                style={{
-                  padding: "6px 12px", fontSize: 11, borderRadius: 7, cursor: "pointer",
-                  background: active ? "rgba(59,130,246,0.12)" : "transparent",
-                  border: `1px solid ${active ? "rgba(59,130,246,0.4)" : "var(--line)"}`,
-                  color: active ? "#7AA9F7" : "var(--text-2)",
-                  fontFamily: "JetBrains Mono, monospace", fontWeight: 500, letterSpacing: "0.04em",
-                }}
-              >{r}</button>
-            );
-          })}
-        </div>
+      <div>
+        <CardHeader icon={<IconTrend size={14}/>} title="7-Day Sentiment Trend" />
+        <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>Hover to inspect daily score</div>
       </div>
       <div style={{ marginTop: 14 }}><TrendChart data={trendData} /></div>
     </Card>
@@ -945,7 +941,8 @@ function TrendCard({ trendData, currentDays, onChangeRange }) {
 
 // ── Source breakdown ───────────────────────────────────────────────────
 function SourceCard({ icon, name, score, count, countLabel, accent, body }) {
-  const z = zoneFor(score);
+  const hasScore = score !== null && score !== undefined;
+  const z = hasScore ? zoneFor(score) : { color: "var(--text-3)", label: "No Data" };
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -957,30 +954,42 @@ function SourceCard({ icon, name, score, count, countLabel, accent, body }) {
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div className="mono" style={{ fontSize: 22, fontWeight: 600, color: z.color, letterSpacing: "-0.02em" }}>{score.toFixed(1)}</div>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 600, color: z.color, letterSpacing: "-0.02em" }}>{hasScore ? score.toFixed(1) : "—"}</div>
           <div style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>/ 100</div>
         </div>
       </div>
-      <div style={{ marginTop: 16, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
-        <div style={{ width: `${score}%`, height: "100%", background: `linear-gradient(90deg, ${z.color}aa, ${z.color})`, boxShadow: `0 0 8px ${z.color}80` }}/>
-      </div>
+      {hasScore && (
+        <div style={{ marginTop: 16, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+          <div style={{ width: `${score}%`, height: "100%", background: `linear-gradient(90deg, ${z.color}aa, ${z.color})`, boxShadow: `0 0 8px ${z.color}80` }}/>
+        </div>
+      )}
       <div style={{ marginTop: 16 }}>{body}</div>
     </Card>
   );
 }
 
+function NoDataBody({ ticker, sourceName }) {
+  return (
+    <div style={{ padding: "12px 0", color: "var(--text-3)", fontSize: 12, lineHeight: 1.6 }}>
+      No posts found for <span style={{ color: "var(--text-2)", fontWeight: 500 }}>${ticker}</span> from {sourceName}. This can happen when the source rate-limits our server.
+    </div>
+  );
+}
+
 function SourceBreakdown({ sources, errors, ticker }) {
   // Helper: does this source have real scored data?
-  const live = (key) => sources && sources[key] && sources[key].score !== null;
+  const live = (key) => sources && sources[key] && sources[key].score !== null && sources[key].count > 0;
 
   // ── Reddit ──────────────────────────────────────────────────
-  const redditScore = live("reddit") ? sources.reddit.score : 68.1;
-  const redditCount = live("reddit") ? sources.reddit.count : 143;
+  const redditScore = live("reddit") ? sources.reddit.score : null;
+  const redditCount = live("reddit") ? sources.reddit.count : 0;
   const redditPost = live("reddit") ? sources.reddit.topPost : null;
   const redditError = errors && errors.reddit;
 
   const redditBody = redditError ? (
     <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : !live("reddit") ? (
+    <NoDataBody ticker={ticker} sourceName="Reddit" />
   ) : redditPost ? (
     <div>
       <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Post</div>
@@ -997,27 +1006,20 @@ function SourceBreakdown({ sources, errors, ticker }) {
       </div>
     </div>
   ) : (
-    <div>
-      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Post</div>
-      <div style={{ fontStyle: "italic", color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(255,107,71,0.4)", paddingLeft: 12 }}>
-        "Q1 deliveries beat by 4% and they barely touched margins — this is the cleanest setup we've had into earnings in months."
-      </div>
-      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11 }}>
-        <span className="mono">▲ 2.4k</span><span className="mono">💬 312</span><span>r/wallstreetbets</span>
-      </div>
-    </div>
+    <div style={{ color: "var(--text-3)", fontSize: 12 }}>Score available but no top post to display.</div>
   );
 
   // ── StockTwits ──────────────────────────────────────────────
-  const stScore = live("stocktwits") ? sources.stocktwits.score : 75.3;
-  const stCount = live("stocktwits") ? sources.stocktwits.count : 30;
-  const stBull = live("stocktwits") ? sources.stocktwits.bull : 18;
-  const stBear = live("stocktwits") ? sources.stocktwits.bear : 7;
+  const stScore = live("stocktwits") ? sources.stocktwits.score : null;
+  const stCount = live("stocktwits") ? sources.stocktwits.count : 0;
+  const stBull = live("stocktwits") ? sources.stocktwits.bull : 0;
+  const stBear = live("stocktwits") ? sources.stocktwits.bear : 0;
   const stError = errors && errors.stocktwits;
 
-  const stTicker = live("stocktwits") ? (sources.stocktwits.ticker || ticker) : ticker;
   const stBody = stError ? (
     <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : !live("stocktwits") ? (
+    <NoDataBody ticker={ticker} sourceName="StockTwits" />
   ) : (
     <div>
     <div style={{ display: "flex", gap: 8 }}>
@@ -1037,19 +1039,21 @@ function SourceBreakdown({ sources, errors, ticker }) {
       </div>
     </div>
     <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-      <a href={`https://stocktwits.com/symbol/${stTicker}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", fontSize: 11, textDecoration: "none" }}>View stream ↗</a>
+      <a href={"https://stocktwits.com/symbol/" + ticker} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", fontSize: 11, textDecoration: "none" }}>View stream ↗</a>
     </div>
     </div>
   );
 
   // ── News ────────────────────────────────────────────────────
-  const newsScore = live("news") ? sources.news.score : 74.0;
-  const newsCount = live("news") ? sources.news.count : 20;
+  const newsScore = live("news") ? sources.news.score : null;
+  const newsCount = live("news") ? sources.news.count : 0;
   const newsHeadline = live("news") ? sources.news.topHeadline : null;
   const newsError = errors && errors.news;
 
   const newsBody = newsError ? (
     <div style={{ color: "var(--text-3)", fontSize: 12 }}>Data unavailable for this source.</div>
+  ) : !live("news") ? (
+    <NoDataBody ticker={ticker} sourceName="News" />
   ) : newsHeadline ? (
     <div>
       <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Headline</div>
@@ -1066,15 +1070,7 @@ function SourceBreakdown({ sources, errors, ticker }) {
       </div>
     </div>
   ) : (
-    <div>
-      <div style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Top Headline</div>
-      <div style={{ color: "var(--text-2)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid rgba(167,139,250,0.4)", paddingLeft: 12 }}>
-        "Tesla expands Shanghai capacity ahead of Q3 ramp; analysts revise FY targets upward by 6%."
-      </div>
-      <div style={{ marginTop: 10, display: "flex", gap: 10, color: "var(--text-3)", fontSize: 11 }}>
-        <span>Yahoo Finance</span><span style={{ color: "var(--line-strong)" }}>·</span><span className="mono">2h ago</span>
-      </div>
-    </div>
+    <div style={{ color: "var(--text-3)", fontSize: 12 }}>Score available but no headline to display.</div>
   );
 
   return (
@@ -1085,7 +1081,7 @@ function SourceBreakdown({ sources, errors, ticker }) {
       }
       {stError
         ? <SourceWarningCard name="StockTwits" message={stError} />
-        : <SourceCard icon={<IconStockTwits size={18}/>} name="StockTwits" score={stScore} count={stCount} countLabel={`messages tagged ${"$"}{live("stocktwits") ? sources.stocktwits.ticker || "..." : "TSLA"}`} accent="#3B82F6" body={stBody} />
+        : <SourceCard icon={<IconStockTwits size={18}/>} name="StockTwits" score={stScore} count={stCount} countLabel={"messages tagged $" + ticker} accent="#3B82F6" body={stBody} />
       }
       {newsError
         ? <SourceWarningCard name="News" message={newsError} />
@@ -1307,7 +1303,9 @@ function App() {
                     ? `Momentum is improving (${trendDeltaStr} pts over the window) — sentiment is stronger now than at the start of the period.`
                     : trendDir === "Declining"
                       ? `Momentum is fading (${trendDeltaStr} pts over the window) — sentiment has weakened versus the start of the period.`
-                      : `The trend is stable — sentiment hasn't moved meaningfully (${trendDeltaStr} pts) across the window.`;
+                      : trendDir === "Insufficient Data"
+                        ? `Not enough historical data to determine a trend yet — only today's posts are available.`
+                        : `The trend is stable — sentiment hasn't moved meaningfully (${trendDeltaStr} pts) across the window.`;
 
                   return <span><span style={{ color: "white", fontWeight: 600 }}>{opening.split("$" + tweaks.ticker)[0]}</span><span style={{ color: z.color, fontWeight: 600 }}>${tweaks.ticker}</span>{opening.split("$" + tweaks.ticker)[1]} {volumeLine} {trendLine}</span>;
                 })()}
@@ -1361,36 +1359,16 @@ function App() {
         </div>
 
         <div style={{ height: 16 }} />
-        <StatsRow mentions={tweaks.mentions} bullPct={tweaks.bullPct} trendDelta={tweaks.trendDelta} trendDirection={trendDirection} days={(apiData && apiData.days) || 7} />
+        <StatsRow mentions={tweaks.mentions} bullPct={tweaks.bullPct} trendDelta={tweaks.trendDelta} trendDirection={trendDirection} days={(apiData && apiData.days) || 7} apiData={apiData} />
 
         <div style={{ height: 16 }} />
-        <TrendCard
-          trendData={trendData}
-          currentDays={apiData && apiData.days ? apiData.days : 7}
-          onChangeRange={(d) => {
-            if (IS_STREAMLIT) {
-              // Show loading immediately so the parent rerun doesn't feel like a crash
-              setLoading(true);
-              const a = document.createElement('a');
-              a.style.display = 'none';
-              a.target = '_top';
-              try {
-                a.href = window.top.location.pathname + '?ticker=' + encodeURIComponent(tweaks.ticker) + '&days=' + d;
-              } catch (_) {
-                a.href = '/?ticker=' + encodeURIComponent(tweaks.ticker) + '&days=' + d;
-              }
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-            }
-          }}
-        />
+        <TrendCard trendData={trendData} />
 
         <div style={{ height: 28 }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 4px 16px" }}>
           <h2 style={{ margin: 0, fontSize: 14, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", fontWeight: 500 }}>Source Breakdown</h2>
           <div style={{ color: "var(--text-3)", fontSize: 12 }}>
-            <span className="mono">{tweaks.mentions}</span> total mentions across <span className="mono">3</span> sources
+            <span className="mono">{tweaks.mentions}</span> total mentions across active sources
           </div>
         </div>
         <SourceBreakdown sources={apiData ? apiData.sources : null} errors={sourceErrors} ticker={tweaks.ticker} />
@@ -1406,10 +1384,13 @@ function App() {
             &nbsp;·&nbsp; Powered by <span style={{ color: "var(--text-2)" }}>FinBERT</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <a href="/How_It_Works" target="_top" style={{ color: "var(--blue)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              How are these scores calculated?
+            </a>
             <a href="#" style={{ color: "var(--text-3)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
               <IconGithub size={14}/> github.com/sentimentiq
             </a>
-            <span className="mono" style={{ color: "var(--text-3)" }}>v0.4.2</span>
+            <span className="mono" style={{ color: "var(--text-3)" }}>v0.5.0</span>
           </div>
         </footer>
       </main>
