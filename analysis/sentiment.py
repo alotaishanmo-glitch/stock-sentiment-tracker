@@ -344,7 +344,9 @@ def detect_trend_direction(daily_trend: List[Dict[str, Any]]) -> Tuple[str, floa
         Tuple of (direction_label, delta). direction_label is one of
         'Improving', 'Declining', or 'Stable'.
     """
-    valid = [d for d in daily_trend if d["score"] is not None]
+    valid = [d for d in daily_trend if d["score"] is not None and d.get("volume", 0) > 0]
+    if len(valid) < 2:
+        return "Insufficient Data", 0.0
     if len(valid) < 4:
         return "Stable", 0.0
 

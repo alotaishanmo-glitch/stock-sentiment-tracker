@@ -48,7 +48,7 @@ def create_app(port: int = 0) -> Flask:
 # ---------------------------------------------------------------------------
 
 def _run_analysis(ticker: str, days: int = 7, limit: int = 50) -> dict:
-    days = max(1, min(int(days or 7), 365))
+    days = max(1, min(int(days or 7), 7))
     from scrapers import reddit_scraper, stocktwits_scraper, news_scraper
     from analysis import sentiment as sent
 
@@ -187,6 +187,7 @@ def _format_trend(daily_trend: list) -> list:
             "day": day_label,
             "date": date_label,
             "score": d["score"] if d["score"] is not None else 50.0,
+            "volume": d.get("volume", 0),
         })
     return result
 
