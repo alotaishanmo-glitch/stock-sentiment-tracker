@@ -7,10 +7,20 @@ import concurrent.futures
 import logging
 import pathlib
 from datetime import datetime
+from typing import Optional
 
 from flask import Flask, jsonify, request
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_int_arg(name: str, default: int, minimum: int, maximum: int) -> Optional[int]:
+    raw_value = request.args.get(name, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return max(minimum, min(value, maximum))
 
 
 def create_app(port: int = 0) -> Flask:
@@ -27,8 +37,10 @@ def create_app(port: int = 0) -> Flask:
         ticker = request.args.get("ticker", "TSLA").strip().upper()
         if not ticker.isalpha() or len(ticker) > 10:
             return jsonify({"error": "Invalid ticker symbol"}), 400
-        days = min(int(request.args.get("days", 7)), 30)
-        limit = min(int(request.args.get("limit", 50)), 100)
+        days = _bounded_int_arg("days", 7, 1, 30)
+        limit = _bounded_int_arg("limit", 50, 1, 100)
+        if days is None or limit is None:
+            return jsonify({"error": "days and limit must be integers"}), 400
         try:
             result = _run_analysis(ticker, days, limit)
             return jsonify(result)
@@ -75,7 +87,7 @@ def _run_analysis(ticker: str, days: int = 7, limit: int = 50) -> dict:
                 errors[source] = str(exc)
                 logger.warning("Scraper %s failed: %s", source, exc)
 
-    # Score each source with FinBERT (sequential — model is not thread-safe for parallel loads)
+    # Score each source with FinBERT; the model is not thread-safe for parallel loads.
     scored_reddit = sent.score_reddit_posts(reddit_posts) if reddit_posts else []
     scored_st = sent.score_stocktwits(st_messages) if st_messages else []
     scored_news = sent.score_news(news_articles) if news_articles else []
@@ -181,7 +193,7 @@ def _format_trend(daily_trend: list) -> list:
             day_label = _DAY_NAMES[dt.weekday()]
             date_label = dt.strftime("%b") + " " + str(dt.day)
         except ValueError:
-            day_label = "—"
+            day_label = "-"
             date_label = d["date"]
         result.append({
             "day": day_label,
